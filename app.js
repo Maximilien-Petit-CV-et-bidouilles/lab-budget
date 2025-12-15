@@ -1,10 +1,3 @@
-// ==============================
-// Budget labo — V1 complète + améliorations
-// - Autosave (debounced)
-// - Badges de statut
-// - Totaux par projet
-// ==============================
-
 const API = "/api/data";
 
 let state = {
@@ -15,9 +8,14 @@ let state = {
 let charts = {};
 let editingId = null;
 
-// Autosave (debounce)
+// Autosave
 let autosaveTimer = null;
 const AUTOSAVE_DELAY_MS = 1500;
+
+// Relances (jours)
+const THRESHOLD_QUOTE_TO_PO = 10;   // devis transmis -> pas de BC
+const THRESHOLD_PO_TO_SF = 30;      // BC -> pas de service fait
+const THRESHOLD_SF_TO_INVOICE = 15; // service fait -> pas de facture
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -42,8 +40,20 @@ function setSaveStatus(msg) {
 function sumAmount(arr) {
   return arr.reduce((acc, x) => acc + (Number(x.amount) || 0), 0);
 }
+function parseDateISO(s) {
+  if (!s) return null;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+function daysSince(isoDate) {
+  const d = parseDateISO(isoDate);
+  if (!d) return null;
+  const now = new Date();
+  const diff = now.getTime() - d.getTime();
+  return Math.floor(diff / (1000 * 60 * 60 * 24));
+}
 
-// -------------------- Options (pour édition) --------------------
+// -------------------- Options --------------------
 const TYPE_OPTIONS = [
   "Orga manifestation scientifique",
   "Aide à la publication",
@@ -63,7 +73,7 @@ function optionsHtml(list, current) {
     .join("");
 }
 
-// -------------------- Badges --------------------
+// -------------------- Badges statut --------------------
 function statusBadge(status) {
   const st = status || "";
   if (st === "Service fait") return `<span class="badge badge-sf">Service fait</span>`;
@@ -72,9 +82,7 @@ function statusBadge(status) {
 }
 
 // -------------------- Identity --------------------
-function idWidget() {
-  return window.netlifyIdentity || null;
-}
+function idWidget() { return window.netlifyIdentity || null; }
 function currentUser() {
   const id = idWidget();
   return id && typeof id.currentUser === "function" ? id.currentUser() : null;
@@ -100,7 +108,6 @@ async function apiGet() {
   if (!res.ok) throw new Error(`GET ${res.status}: ${text}`);
   return JSON.parse(text);
 }
-
 async function apiSave() {
   const headers = { ...(await authHeaders()), "content-type": "application/json" };
   const res = await fetch(API, { method: "PUT", headers, body: JSON.stringify(state) });
@@ -109,24 +116,29 @@ async function apiSave() {
   if (!res.ok) throw new Error(`PUT ${res.status}: ${text}`);
   return JSON.parse(text);
 }
-
 function normalize(data) {
-  return {
-    budgets: data?.budgets || { Fonctionnement: 0, Investissement: 0 },
-    expenses: Array.isArray(data?.expenses) ? data.expenses : []
-  };
+  const budgets = data?.budgets || { Fonctionnement: 0, Investissement: 0 };
+  const expenses = Array.isArray(data?.expenses) ? data.expenses : [];
+  // compat V1 -> V2 : garantir les nouveaux champs
+  for (const x of expenses) {
+    x.supplier ||= "";
+    x.quoteNumber ||= "";
+    x.quoteDate ||= "";
+    x.poNumber ||= "";
+    x.poDate ||= "";
+    x.invoiceNumber ||= "";
+    x.invoiceDate ||= "";
+  }
+  return { budgets, expenses };
 }
 
 // -------------------- Autosave --------------------
 function scheduleAutosave(reason = "") {
-  // Si pas connecté, on ne peut pas sauvegarder serveur → on n’insiste pas
   if (!currentUser()) {
     setSaveStatus("Connecte-toi pour activer l’autosauvegarde.");
     return;
   }
-
   if (autosaveTimer) clearTimeout(autosaveTimer);
-
   setSaveStatus(reason ? `Autosave… (${reason})` : "Autosave…");
 
   autosaveTimer = setTimeout(async () => {
@@ -135,12 +147,8 @@ function scheduleAutosave(reason = "") {
       await apiSave();
       setSaveStatus("Autosauvegardé ✅");
     } catch (e) {
-      if (e.message === "AUTH") {
-        setSaveStatus("Session expirée — reconnecte-toi.");
-      } else {
-        setSaveStatus("Autosave échoué.");
-        console.warn("Autosave failed:", e);
-      }
+      if (e.message === "AUTH") setSaveStatus("Session expirée — reconnecte-toi.");
+      else { setSaveStatus("Autosave échoué."); console.warn("Autosave failed:", e); }
     }
   }, AUTOSAVE_DELAY_MS);
 }
@@ -156,6 +164,16 @@ function readBudgets() {
 }
 
 // -------------------- Filtering --------------------
+function searchableText(x) {
+  return (
+    (x.label || "") + " " +
+    (x.project || "") + " " +
+    (x.supplier || "") + " " +
+    (x.quoteNumber || "") + " " +
+    (x.poNumber || "") + " " +
+    (x.invoiceNumber || "")
+  ).toLowerCase();
+}
 function filteredExpenses() {
   const q = ($("#q").value || "").trim().toLowerCase();
   const s = $("#filterStatus").value || "";
@@ -163,7 +181,7 @@ function filteredExpenses() {
   const t = $("#filterType").value || "";
 
   return state.expenses
-    .filter(x => !q || ((x.label || "") + " " + (x.project || "")).toLowerCase().includes(q))
+    .filter(x => !q || searchableText(x).includes(q))
     .filter(x => !s || x.status === s)
     .filter(x => !e || x.envelope === e)
     .filter(x => !t || x.type === t)
@@ -181,7 +199,84 @@ function totalsByProject(expenses) {
   return [...map.entries()].sort((a, b) => b[1] - a[1]);
 }
 
-// -------------------- Table + totals (avec édition) --------------------
+// -------------------- Relances (workflow) --------------------
+function computeReminders() {
+  const items = [];
+
+  for (const x of state.expenses) {
+    const quote = x.quoteDate || "";
+    const po = x.poDate || "";
+    const inv = x.invoiceDate || "";
+
+    // 1) devis -> pas de BC
+    if (x.quoteNumber && !x.poNumber) {
+      const d = daysSince(quote) ?? daysSince(x.date);
+      if (d != null && d >= THRESHOLD_QUOTE_TO_PO) {
+        items.push({ kind: "Devis sans BC", days: d, x });
+      }
+    }
+
+    // 2) BC -> pas service fait (on s'appuie sur statut)
+    if (x.poNumber && x.status !== "Service fait") {
+      const d = daysSince(po) ?? daysSince(x.date);
+      if (d != null && d >= THRESHOLD_PO_TO_SF) {
+        items.push({ kind: "BC sans service fait", days: d, x });
+      }
+    }
+
+    // 3) service fait -> pas facture
+    if (x.status === "Service fait" && !x.invoiceNumber) {
+      const d = daysSince(x.date);
+      if (d != null && d >= THRESHOLD_SF_TO_INVOICE) {
+        items.push({ kind: "Service fait sans facture", days: d, x });
+      }
+    }
+
+    // 4) facture numéro mais pas date (petit contrôle)
+    if (x.invoiceNumber && !inv) {
+      items.push({ kind: "Facture sans date", days: null, x });
+    }
+  }
+
+  items.sort((a, b) => (b.days ?? -1) - (a.days ?? -1));
+  return items.slice(0, 12);
+}
+
+function renderReminders() {
+  const el = $("#reminders");
+  if (!el) return;
+
+  const items = computeReminders();
+  if (!items.length) {
+    el.innerHTML = `<div class="muted">Aucune relance détectée ✅</div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <ul class="reminders">
+      ${items.map(it => `
+        <li>
+          <b>${escapeHtml(it.kind)}</b>
+          ${it.days != null ? `<span class="muted">(${it.days}j)</span>` : ``}
+          — ${escapeHtml(it.x.label || "")}
+          ${it.x.supplier ? `<span class="muted">• ${escapeHtml(it.x.supplier)}</span>` : ``}
+          ${it.x.poNumber ? `<span class="muted">• BC: ${escapeHtml(it.x.poNumber)}</span>` : ``}
+          ${it.x.quoteNumber ? `<span class="muted">• Devis: ${escapeHtml(it.x.quoteNumber)}</span>` : ``}
+        </li>
+      `).join("")}
+    </ul>
+  `;
+}
+
+// -------------------- Table + totals (édition) --------------------
+function refsCell(x) {
+  const parts = [];
+  if (x.quoteNumber) parts.push(`Devis: ${escapeHtml(x.quoteNumber)}`);
+  if (x.poNumber) parts.push(`BC: ${escapeHtml(x.poNumber)}`);
+  if (x.invoiceNumber) parts.push(`Fact: ${escapeHtml(x.invoiceNumber)}`);
+  return parts.length ? parts.join(" • ") : `<span class="muted">—</span>`;
+}
+
 function renderTable() {
   const tbody = $("#tbody");
   if (!tbody) return;
@@ -194,6 +289,8 @@ function renderTable() {
         <tr data-id="${x.id}">
           <td>${escapeHtml(x.date || "")}</td>
           <td>${escapeHtml(x.label || "")}</td>
+          <td>${escapeHtml(x.supplier || "")}</td>
+          <td>${refsCell(x)}</td>
           <td>${escapeHtml(x.type || "")}</td>
           <td>${escapeHtml(x.envelope || "")}</td>
           <td>${escapeHtml(x.project || "")}</td>
@@ -207,11 +304,46 @@ function renderTable() {
       `;
     }
 
-    // Mode édition
     return `
       <tr data-id="${x.id}">
         <td><input class="editDate" type="date" value="${escapeHtml(x.date || "")}"></td>
-        <td><input class="editLabel" type="text" value="${escapeHtml(x.label || "")}"></td>
+        <td>
+          <input class="editLabel" type="text" value="${escapeHtml(x.label || "")}">
+          <div style="margin-top:6px;">
+            <details class="details">
+              <summary>Détails devis / BC / facture</summary>
+              <div class="grid2">
+                <label>Fournisseur
+                  <input class="editSupplier" type="text" value="${escapeHtml(x.supplier || "")}">
+                </label>
+                <span></span>
+
+                <label>N° devis
+                  <input class="editQuoteNumber" type="text" value="${escapeHtml(x.quoteNumber || "")}">
+                </label>
+                <label>Date devis
+                  <input class="editQuoteDate" type="date" value="${escapeHtml(x.quoteDate || "")}">
+                </label>
+
+                <label>N° BC
+                  <input class="editPoNumber" type="text" value="${escapeHtml(x.poNumber || "")}">
+                </label>
+                <label>Date BC
+                  <input class="editPoDate" type="date" value="${escapeHtml(x.poDate || "")}">
+                </label>
+
+                <label>N° facture
+                  <input class="editInvoiceNumber" type="text" value="${escapeHtml(x.invoiceNumber || "")}">
+                </label>
+                <label>Date facture
+                  <input class="editInvoiceDate" type="date" value="${escapeHtml(x.invoiceDate || "")}">
+                </label>
+              </div>
+            </details>
+          </div>
+        </td>
+        <td><input class="editSupplier2" type="text" value="${escapeHtml(x.supplier || "")}" placeholder="(optionnel)"></td>
+        <td>${refsCell(x)}</td>
         <td>
           <select class="editType">
             ${optionsHtml(TYPE_OPTIONS, x.type || "Autre")}
@@ -239,7 +371,7 @@ function renderTable() {
     `;
   }).join("");
 
-  tbody.innerHTML = rows || `<tr><td colspan="8" class="muted">Aucune dépense</td></tr>`;
+  tbody.innerHTML = rows || `<tr><td colspan="10" class="muted">Aucune dépense</td></tr>`;
 
   // Totaux
   const all = state.expenses;
@@ -258,18 +390,15 @@ function renderTable() {
   const resteFonct = (state.budgets.Fonctionnement || 0) - byEnvelope.Fonctionnement;
   const resteInv = (state.budgets.Investissement || 0) - byEnvelope.Investissement;
 
-  const proj = totalsByProject(all);
-  const topProj = proj.slice(0, 6); // top 6 projets pour ne pas encombrer
+  const proj = totalsByProject(all).slice(0, 8);
 
   $("#totals").innerHTML = `
     <div><b>Total</b> : ${euro(sumAmount(all))}</div>
     <div>Par statut — Votée: ${euro(byStatus["Votée"])} • Engagée: ${euro(byStatus["Engagée"])} • Service fait: ${euro(byStatus["Service fait"])}</div>
     <div>Reste budgets — Fonctionnement: ${euro(resteFonct)} • Investissement: ${euro(resteInv)}</div>
     ${
-      topProj.length
-        ? `<div style="margin-top:8px;"><b>Totaux par projet (top)</b> : ${
-            topProj.map(([p, v]) => `${escapeHtml(p)} <span class="muted">(${euro(v)})</span>`).join(" • ")
-          }</div>`
+      proj.length
+        ? `<div style="margin-top:8px;"><b>Totaux par projet (top)</b> : ${proj.map(([p, v]) => `${escapeHtml(p)} <span class="muted">(${euro(v)})</span>`).join(" • ")}</div>`
         : `<div style="margin-top:8px;" class="muted">Totaux par projet : aucun projet renseigné.</div>`
     }
   `;
@@ -296,7 +425,7 @@ function buildStats() {
 
   const m = new Map();
   for (const x of all.filter(x => x.status === "Service fait")) {
-    const ym = (x.date || "").slice(0, 7); // YYYY-MM
+    const ym = (x.date || "").slice(0, 7);
     if (!ym) continue;
     m.set(ym, (m.get(ym) || 0) + (Number(x.amount) || 0));
   }
@@ -348,24 +477,26 @@ function download(filename, content, mime) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
-
 function csvCell(v) {
   const s = (v ?? "").toString();
   if (/[,"\n;]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
 }
-
 function exportCsv() {
-  const headers = ["id", "date", "label", "type", "envelope", "project", "status", "amount"];
+  const headers = [
+    "id","date","label","supplier",
+    "quoteNumber","quoteDate",
+    "poNumber","poDate",
+    "invoiceNumber","invoiceDate",
+    "type","envelope","project","status","amount"
+  ];
   const lines = [headers.join(",")];
   for (const x of state.expenses) lines.push(headers.map(h => csvCell(x[h])).join(","));
   download("budget-labo.csv", lines.join("\n"), "text/csv;charset=utf-8");
 }
-
 function exportJson() {
   download("budget-labo.json", JSON.stringify(state, null, 2), "application/json;charset=utf-8");
 }
-
 function parseCsv(text) {
   const rows = [];
   let i = 0, field = "", row = [], inQuotes = false;
@@ -395,7 +526,6 @@ function parseCsv(text) {
   if (row.some(x => x.length > 0)) rows.push(row);
   return rows;
 }
-
 function importCsv(file) {
   const reader = new FileReader();
   reader.onload = () => {
@@ -405,25 +535,31 @@ function importCsv(file) {
     const headers = rows[0].map(h => h.trim());
     const idx = (name) => headers.indexOf(name);
 
-    const required = ["date", "label", "type", "envelope", "status", "amount"];
+    const required = ["date","label","type","envelope","status","amount"];
     for (const r of required) {
-      if (idx(r) === -1) {
-        alert(`CSV invalide : colonne manquante "${r}"`);
-        return;
-      }
+      if (idx(r) === -1) { alert(`CSV invalide : colonne manquante "${r}"`); return; }
     }
+
+    const get = (r, name, fallback = "") => (idx(name) !== -1 ? (r[idx(name)] || fallback) : fallback);
 
     const nextExpenses = [];
     for (const r of rows.slice(1)) {
       const obj = {
-        id: r[idx("id")] || uid(),
-        date: r[idx("date")] || "",
-        label: r[idx("label")] || "",
-        type: r[idx("type")] || "Autre",
-        envelope: r[idx("envelope")] || "Fonctionnement",
-        project: idx("project") !== -1 ? (r[idx("project")] || "") : "",
-        status: r[idx("status")] || "Votée",
-        amount: Number((r[idx("amount")] || "").replace(",", ".")) || 0
+        id: get(r,"id",uid()),
+        date: get(r,"date",""),
+        label: get(r,"label",""),
+        supplier: get(r,"supplier",""),
+        quoteNumber: get(r,"quoteNumber",""),
+        quoteDate: get(r,"quoteDate",""),
+        poNumber: get(r,"poNumber",""),
+        poDate: get(r,"poDate",""),
+        invoiceNumber: get(r,"invoiceNumber",""),
+        invoiceDate: get(r,"invoiceDate",""),
+        type: get(r,"type","Autre"),
+        envelope: get(r,"envelope","Fonctionnement"),
+        project: get(r,"project",""),
+        status: get(r,"status","Votée"),
+        amount: Number(get(r,"amount","0").replace(",", ".")) || 0
       };
       if (obj.label || obj.amount) nextExpenses.push(obj);
     }
@@ -441,21 +577,13 @@ function renderAll() {
   renderBudgets();
   renderTable();
   renderCharts();
+  renderReminders();
 }
 
 // -------------------- Events --------------------
 function wireEvents() {
-  // Login / Logout
-  $("#btnLogin").addEventListener("click", () => {
-    const id = idWidget();
-    if (!id) return alert("Netlify Identity n’est pas chargé.");
-    id.open();
-  });
-
-  $("#btnLogout").addEventListener("click", async () => {
-    await idWidget()?.logout();
-    updateAuthButtons();
-  });
+  $("#btnLogin").addEventListener("click", () => idWidget()?.open());
+  $("#btnLogout").addEventListener("click", async () => { await idWidget()?.logout(); updateAuthButtons(); });
 
   // Add expense
   $("#expenseForm").addEventListener("submit", (e) => {
@@ -466,9 +594,16 @@ function wireEvents() {
       id: uid(),
       date: fd.get("date"),
       label: fd.get("label"),
+      supplier: fd.get("supplier") || "",
+      quoteNumber: fd.get("quoteNumber") || "",
+      quoteDate: fd.get("quoteDate") || "",
+      poNumber: fd.get("poNumber") || "",
+      poDate: fd.get("poDate") || "",
+      invoiceNumber: fd.get("invoiceNumber") || "",
+      invoiceDate: fd.get("invoiceDate") || "",
       type: fd.get("type"),
       envelope: fd.get("envelope"),
-      project: fd.get("project"),
+      project: fd.get("project") || "",
       status: fd.get("status"),
       amount: Number(fd.get("amount") || 0)
     });
@@ -478,13 +613,12 @@ function wireEvents() {
     scheduleAutosave("ajout");
   });
 
-  // Edit/Delete row (event delegation)
+  // Edit/Delete row
   $("#tbody").addEventListener("click", (e) => {
     const tr = e.target.closest("tr");
     const id = tr?.getAttribute("data-id");
     if (!id) return;
 
-    // Delete
     if (e.target.closest(".btnDel")) {
       state.expenses = state.expenses.filter(x => x.id !== id);
       if (editingId === id) editingId = null;
@@ -493,49 +627,46 @@ function wireEvents() {
       return;
     }
 
-    // Enter edit mode
     if (e.target.closest(".btnEdit")) {
       editingId = id;
-      renderTable(); // table only
+      renderTable();
       return;
     }
 
-    // Cancel edit
     if (e.target.closest(".btnRowCancel")) {
       editingId = null;
       renderTable();
       return;
     }
 
-    // Save edit
     if (e.target.closest(".btnRowSave")) {
-      const get = (sel) => tr.querySelector(sel);
+      const q = (sel) => tr.querySelector(sel);
 
       const next = {
         id,
-        date: get(".editDate")?.value || "",
-        label: get(".editLabel")?.value || "",
-        type: get(".editType")?.value || "Autre",
-        envelope: get(".editEnvelope")?.value || "Fonctionnement",
-        project: get(".editProject")?.value || "",
-        status: get(".editStatus")?.value || "Votée",
-        amount: Number(get(".editAmount")?.value || 0)
+        date: q(".editDate")?.value || "",
+        label: q(".editLabel")?.value || "",
+        supplier: (q(".editSupplier")?.value || q(".editSupplier2")?.value || "").trim(),
+        quoteNumber: (q(".editQuoteNumber")?.value || "").trim(),
+        quoteDate: q(".editQuoteDate")?.value || "",
+        poNumber: (q(".editPoNumber")?.value || "").trim(),
+        poDate: q(".editPoDate")?.value || "",
+        invoiceNumber: (q(".editInvoiceNumber")?.value || "").trim(),
+        invoiceDate: q(".editInvoiceDate")?.value || "",
+        type: q(".editType")?.value || "Autre",
+        envelope: q(".editEnvelope")?.value || "Fonctionnement",
+        project: (q(".editProject")?.value || "").trim(),
+        status: q(".editStatus")?.value || "Votée",
+        amount: Number(q(".editAmount")?.value || 0)
       };
 
-      if (!next.label.trim()) {
-        alert("Le libellé est obligatoire.");
-        return;
-      }
-      if (Number.isNaN(next.amount) || next.amount < 0) {
-        alert("Le montant doit être un nombre ≥ 0.");
-        return;
-      }
+      if (!next.label.trim()) { alert("Le libellé est obligatoire."); return; }
+      if (Number.isNaN(next.amount) || next.amount < 0) { alert("Montant invalide (≥ 0)."); return; }
 
       state.expenses = state.expenses.map(x => (x.id === id ? next : x));
       editingId = null;
       renderAll();
       scheduleAutosave("modif");
-      return;
     }
   });
 
@@ -545,7 +676,7 @@ function wireEvents() {
     $(sel).addEventListener("change", renderTable);
   });
 
-  // Save budgets (on garde le bouton + autosave aussi)
+  // Budgets
   $("#btnSaveBudgets").addEventListener("click", async () => {
     try {
       readBudgets();
@@ -558,7 +689,6 @@ function wireEvents() {
     }
   });
 
-  // Manual save
   $("#btnSave").addEventListener("click", async () => {
     try {
       await apiSave();
@@ -569,6 +699,9 @@ function wireEvents() {
     }
   });
 
+  $("#budgetFonct").addEventListener("input", () => { readBudgets(); renderAll(); scheduleAutosave("budget"); });
+  $("#budgetInv").addEventListener("input", () => { readBudgets(); renderAll(); scheduleAutosave("budget"); });
+
   // Export/Import
   $("#btnExportCsv").addEventListener("click", exportCsv);
   $("#btnExportJson").addEventListener("click", exportJson);
@@ -578,10 +711,6 @@ function wireEvents() {
     if (f) importCsv(f);
     e.target.value = "";
   });
-
-  // Autosave sur changement budgets (sans cliquer)
-  $("#budgetFonct").addEventListener("input", () => { readBudgets(); renderTable(); renderCharts(); scheduleAutosave("budget"); });
-  $("#budgetInv").addEventListener("input", () => { readBudgets(); renderTable(); renderCharts(); scheduleAutosave("budget"); });
 }
 
 // -------------------- Boot --------------------
@@ -589,10 +718,7 @@ async function boot() {
   wireEvents();
 
   const id = idWidget();
-  if (!id) {
-    renderAll();
-    return;
-  }
+  if (!id) { renderAll(); return; }
 
   id.on("init", () => updateAuthButtons());
 
@@ -609,11 +735,8 @@ async function boot() {
     }
   });
 
-  id.on("logout", () => {
-    updateAuthButtons();
-  });
+  id.on("logout", () => updateAuthButtons());
 
-  // si déjà connecté (session), charger au démarrage
   updateAuthButtons();
   try {
     if (currentUser()) {
