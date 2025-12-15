@@ -46,16 +46,15 @@ tfoot td{ border-bottom:none; }
   border:1px solid rgba(0,0,0,.08);
   white-space:nowrap;
 }
+.badge-votee{ background: rgba(0,0,0,.05); }
+.badge-engagee{ background: rgba(255,165,0,.18); }
+.badge-sf{ background: rgba(0,128,0,.18); }
 
-.badge-votee{
-  background: rgba(0,0,0,.05);
-}
+/* Relances */
+.reminders{ margin: 8px 0 0; padding-left: 18px; }
+.reminders li{ margin: 6px 0; }
 
-.badge-engagee{
-  background: rgba(255,165,0,.18);
-}
-
-.badge-sf{
-  background: rgba(0,128,0,.18);
-}
+/* Details (form + édition) */
+.details summary{ cursor:pointer; }
+.details{ margin-top: 10px; }
 
