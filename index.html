@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Budget laboratoire</title>
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- Netlify Identity -->
+  <script defer src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
+
+  <!-- Chart.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Budget laboratoire</h1>
+      <p class="muted">Dépenses : votées / engagées / service fait • Enveloppes : fonctionnement / investissement • Projets</p>
+    </div>
+    <div class="topbar-actions">
+      <button id="btnLogin" class="btn">Se connecter</button>
+      <button id="btnLogout" class="btn btn-ghost" style="display:none;">Se déconnecter</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="cards">
+      <div class="card">
+        <h2>Budgets</h2>
+        <div class="grid2">
+          <label>Budget Fonctionnement (€)
+            <input id="budgetFonct" type="number" step="0.01" min="0" />
+          </label>
+          <label>Budget Investissement (€)
+            <input id="budgetInv" type="number" step="0.01" min="0" />
+          </label>
+        </div>
+        <div class="row">
+          <button id="btnSaveBudgets" class="btn btn-primary">Enregistrer</button>
+          <span id="saveStatus" class="muted"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Import / Export</h2>
+        <div class="row wrap">
+          <button id="btnExportCsv" class="btn">Exporter CSV</button>
+          <label class="btn">
+            Importer CSV
+            <input id="fileCsv" type="file" accept=".csv,text/csv" hidden />
+          </label>
+          <button id="btnExportJson" class="btn btn-ghost">Exporter JSON</button>
+        </div>
+        <p class="muted small">Astuce : garde un CSV “source” (Excel/LibreOffice) si tu veux une saisie rapide.</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Ajouter une dépense</h2>
+      <form id="expenseForm" class="grid">
+        <label>Date
+          <input name="date" type="date" required />
+        </label>
+
+        <label>Libellé
+          <input name="label" type="text" required placeholder="Ex : Billets train colloque…" />
+        </label>
+
+        <label>Type de dépense
+          <select name="type" required>
+            <option value="Orga manifestation scientifique">Orga manifestation scientifique</option>
+            <option value="Aide à la publication">Aide à la publication</option>
+            <option value="Mission France">Mission (France)</option>
+            <option value="Mission Europe">Mission (Europe)</option>
+            <option value="Mission International">Mission (International)</option>
+            <option value="Achat matériel informatique">Achat matériel informatique</option>
+            <option value="Achat logiciels">Achat logiciels</option>
+            <option value="Autre">Autre</option>
+          </select>
+        </label>
+
+        <label>Enveloppe
+          <select name="envelope" required>
+            <option value="Fonctionnement">Fonctionnement</option>
+            <option value="Investissement">Investissement</option>
+          </select>
+        </label>
+
+        <label>Projet (optionnel)
+          <input name="project" type="text" placeholder="Ex : ANR X / EquipEx Y / …" />
+        </label>
+
+        <label>Statut
+          <select name="status" required>
+            <option value="Votée">Votée</option>
+            <option value="Engagée">Engagée</option>
+            <option value="Service fait">Service fait</option>
+          </select>
+        </label>
+
+        <label>Montant (€)
+          <input name="amount" type="number" step="0.01" min="0" required />
+        </label>
+
+        <div class="row">
+          <button class="btn btn-primary" type="submit">Ajouter</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Liste des dépenses</h2>
+
+      <div class="row wrap">
+        <input id="q" class="search" placeholder="Rechercher (libellé / projet)..." />
+        <select id="filterStatus">
+          <option value="">Tous statuts</option>
+          <option value="Votée">Votée</option>
+          <option value="Engagée">Engagée</option>
+          <option value="Service fait">Service fait</option>
+        </select>
+        <select id="filterEnvelope">
+          <option value="">Toutes enveloppes</option>
+          <option value="Fonctionnement">Fonctionnement</option>
+          <option value="Investissement">Investissement</option>
+        </select>
+        <select id="filterType">
+          <option value="">Tous types</option>
+          <option>Orga manifestation scientifique</option>
+          <option>Aide à la publication</option>
+          <option>Mission France</option>
+          <option>Mission Europe</option>
+          <option>Mission International</option>
+          <option>Achat matériel informatique</option>
+          <option>Achat logiciels</option>
+          <option>Autre</option>
+        </select>
+      </div>
+
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Libellé</th>
+              <th>Type</th>
+              <th>Enveloppe</th>
+              <th>Projet</th>
+              <th>Statut</th>
+              <th class="right">Montant</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+
+      <div class="row between">
+        <div class="muted small" id="totals"></div>
+        <button id="btnSave" class="btn btn-primary">Sauvegarder</button>
+      </div>
+    </section>
+
+    <section class="cards">
+      <div class="card">
+        <h2>Répartition par statut</h2>
+        <canvas id="chartStatus"></canvas>
+      </div>
+      <div class="card">
+        <h2>Répartition par enveloppe</h2>
+        <canvas id="chartEnvelope"></canvas>
+      </div>
+      <div class="card">
+        <h2>Top types de dépenses</h2>
+        <canvas id="chartType"></canvas>
+      </div>
+      <div class="card">
+        <h2>Évolution mensuelle (service fait)</h2>
+        <canvas id="chartMonthly"></canvas>
+      </div>
+    </section>
+
+    <footer class="footer muted small">
+      Données stockées sur Netlify (Blobs) • Accès via Netlify Identity
+    </footer>
+  </main>
+</body>
+</html>
