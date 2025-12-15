@@ -2,7 +2,12 @@ const { getStore } = require("@netlify/blobs");
 
 exports.handler = async (event, context) => {
   try {
-    // Auth: nécessite Netlify Identity connecté
+    /**
+     * Authentification
+     * Netlify remplit context.clientContext.user
+     * si un JWT valide est fourni dans :
+     * Authorization: Bearer <token>
+     */
     const user = context && context.clientContext && context.clientContext.user;
     if (!user) {
       return {
@@ -15,19 +20,30 @@ exports.handler = async (event, context) => {
     const store = getStore("lab-budget");
     const key = "data.json";
 
+    // ---- GET : charger les données
     if (event.httpMethod === "GET") {
       const raw = await store.get(key, { type: "json" });
       return {
         statusCode: 200,
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(raw || { budgets: { Fonctionnement: 0, Investissement: 0 }, expenses: [] })
+        body: JSON.stringify(
+          raw || {
+            budgets: { Fonctionnement: 0, Investissement: 0 },
+            expenses: []
+          }
+        )
       };
     }
 
+    // ---- PUT : sauvegarder les données
     if (event.httpMethod === "PUT") {
       const body = event.body ? JSON.parse(event.body) : null;
 
-      if (!body || !Array.isArray(body.expenses)) {
+      if (
+        !body ||
+        typeof body !== "object" ||
+        !Array.isArray(body.expenses)
+      ) {
         return {
           statusCode: 400,
           headers: { "content-type": "application/json" },
@@ -44,11 +60,13 @@ exports.handler = async (event, context) => {
       };
     }
 
+    // ---- Méthode non autorisée
     return {
       statusCode: 405,
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ error: "Method not allowed" })
     };
+
   } catch (e) {
     return {
       statusCode: 500,
