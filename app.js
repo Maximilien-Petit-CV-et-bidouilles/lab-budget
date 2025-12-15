@@ -27,16 +27,21 @@ function requireAuthUI(){
 }
 
 async function apiGet(){
-  const res = await fetch(API, { method:"GET" });
+  const headers = await authHeaders();
+  const res = await fetch(API, {
+    method: "GET",
+    headers
+  });
   if (res.status === 401) throw new Error("AUTH");
   if (!res.ok) throw new Error("Erreur API");
   return res.json();
 }
 
 async function apiSave(){
+  const headers = { ...(await authHeaders()), "content-type":"application/json" };
   const res = await fetch(API, {
     method:"PUT",
-    headers:{ "content-type":"application/json" },
+    headers,
     body: JSON.stringify(state)
   });
   if (res.status === 401) throw new Error("AUTH");
