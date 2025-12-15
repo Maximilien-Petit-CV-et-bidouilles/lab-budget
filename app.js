@@ -1,10 +1,8 @@
 // ==============================
-// Budget labo — V1 complète
-// - Netlify Identity (JWT Bearer)
-// - Netlify Functions (/api/data)
-// - Import/Export CSV + Export JSON
-// - Stats + Graphiques (Chart.js)
-// - Edition de ligne (Modifier / OK / Annuler)
+// Budget labo — V1 complète + améliorations
+// - Autosave (debounced)
+// - Badges de statut
+// - Totaux par projet
 // ==============================
 
 const API = "/api/data";
@@ -16,6 +14,10 @@ let state = {
 
 let charts = {};
 let editingId = null;
+
+// Autosave (debounce)
+let autosaveTimer = null;
+const AUTOSAVE_DELAY_MS = 1500;
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -37,6 +39,9 @@ function setSaveStatus(msg) {
   el.textContent = msg || "";
   if (msg) setTimeout(() => (el.textContent = ""), 2500);
 }
+function sumAmount(arr) {
+  return arr.reduce((acc, x) => acc + (Number(x.amount) || 0), 0);
+}
 
 // -------------------- Options (pour édition) --------------------
 const TYPE_OPTIONS = [
@@ -56,6 +61,14 @@ function optionsHtml(list, current) {
   return list
     .map(v => `<option value="${escapeHtml(v)}" ${v === current ? "selected" : ""}>${escapeHtml(v)}</option>`)
     .join("");
+}
+
+// -------------------- Badges --------------------
+function statusBadge(status) {
+  const st = status || "";
+  if (st === "Service fait") return `<span class="badge badge-sf">Service fait</span>`;
+  if (st === "Engagée") return `<span class="badge badge-engagee">Engagée</span>`;
+  return `<span class="badge badge-votee">Votée</span>`;
 }
 
 // -------------------- Identity --------------------
@@ -104,6 +117,34 @@ function normalize(data) {
   };
 }
 
+// -------------------- Autosave --------------------
+function scheduleAutosave(reason = "") {
+  // Si pas connecté, on ne peut pas sauvegarder serveur → on n’insiste pas
+  if (!currentUser()) {
+    setSaveStatus("Connecte-toi pour activer l’autosauvegarde.");
+    return;
+  }
+
+  if (autosaveTimer) clearTimeout(autosaveTimer);
+
+  setSaveStatus(reason ? `Autosave… (${reason})` : "Autosave…");
+
+  autosaveTimer = setTimeout(async () => {
+    autosaveTimer = null;
+    try {
+      await apiSave();
+      setSaveStatus("Autosauvegardé ✅");
+    } catch (e) {
+      if (e.message === "AUTH") {
+        setSaveStatus("Session expirée — reconnecte-toi.");
+      } else {
+        setSaveStatus("Autosave échoué.");
+        console.warn("Autosave failed:", e);
+      }
+    }
+  }, AUTOSAVE_DELAY_MS);
+}
+
 // -------------------- Budgets UI --------------------
 function renderBudgets() {
   $("#budgetFonct").value = state.budgets.Fonctionnement ?? 0;
@@ -129,6 +170,17 @@ function filteredExpenses() {
     .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
 }
 
+// -------------------- Totaux par projet --------------------
+function totalsByProject(expenses) {
+  const map = new Map();
+  for (const x of expenses) {
+    const p = (x.project || "").trim();
+    if (!p) continue;
+    map.set(p, (map.get(p) || 0) + (Number(x.amount) || 0));
+  }
+  return [...map.entries()].sort((a, b) => b[1] - a[1]);
+}
+
 // -------------------- Table + totals (avec édition) --------------------
 function renderTable() {
   const tbody = $("#tbody");
@@ -145,7 +197,7 @@ function renderTable() {
           <td>${escapeHtml(x.type || "")}</td>
           <td>${escapeHtml(x.envelope || "")}</td>
           <td>${escapeHtml(x.project || "")}</td>
-          <td>${escapeHtml(x.status || "")}</td>
+          <td>${statusBadge(x.status)}</td>
           <td class="right">${euro(x.amount)}</td>
           <td>
             <button class="btn btn-ghost btnEdit" type="button">✏️ Modifier</button>
@@ -191,39 +243,47 @@ function renderTable() {
 
   // Totaux
   const all = state.expenses;
-  const sum = (arr) => arr.reduce((acc, x) => acc + (Number(x.amount) || 0), 0);
 
   const byStatus = {
-    "Votée": sum(all.filter(x => x.status === "Votée")),
-    "Engagée": sum(all.filter(x => x.status === "Engagée")),
-    "Service fait": sum(all.filter(x => x.status === "Service fait"))
+    "Votée": sumAmount(all.filter(x => x.status === "Votée")),
+    "Engagée": sumAmount(all.filter(x => x.status === "Engagée")),
+    "Service fait": sumAmount(all.filter(x => x.status === "Service fait"))
   };
 
   const byEnvelope = {
-    "Fonctionnement": sum(all.filter(x => x.envelope === "Fonctionnement")),
-    "Investissement": sum(all.filter(x => x.envelope === "Investissement"))
+    "Fonctionnement": sumAmount(all.filter(x => x.envelope === "Fonctionnement")),
+    "Investissement": sumAmount(all.filter(x => x.envelope === "Investissement"))
   };
 
   const resteFonct = (state.budgets.Fonctionnement || 0) - byEnvelope.Fonctionnement;
   const resteInv = (state.budgets.Investissement || 0) - byEnvelope.Investissement;
 
+  const proj = totalsByProject(all);
+  const topProj = proj.slice(0, 6); // top 6 projets pour ne pas encombrer
+
   $("#totals").innerHTML = `
-    <div><b>Total</b> : ${euro(sum(all))}</div>
+    <div><b>Total</b> : ${euro(sumAmount(all))}</div>
     <div>Par statut — Votée: ${euro(byStatus["Votée"])} • Engagée: ${euro(byStatus["Engagée"])} • Service fait: ${euro(byStatus["Service fait"])}</div>
     <div>Reste budgets — Fonctionnement: ${euro(resteFonct)} • Investissement: ${euro(resteInv)}</div>
+    ${
+      topProj.length
+        ? `<div style="margin-top:8px;"><b>Totaux par projet (top)</b> : ${
+            topProj.map(([p, v]) => `${escapeHtml(p)} <span class="muted">(${euro(v)})</span>`).join(" • ")
+          }</div>`
+        : `<div style="margin-top:8px;" class="muted">Totaux par projet : aucun projet renseigné.</div>`
+    }
   `;
 }
 
 // -------------------- Charts --------------------
 function buildStats() {
   const all = state.expenses;
-  const sum = (arr) => arr.reduce((acc, x) => acc + (Number(x.amount) || 0), 0);
 
   const statusLabels = ["Votée", "Engagée", "Service fait"];
-  const statusData = statusLabels.map(st => sum(all.filter(x => x.status === st)));
+  const statusData = statusLabels.map(st => sumAmount(all.filter(x => x.status === st)));
 
   const envLabels = ["Fonctionnement", "Investissement"];
-  const envData = envLabels.map(en => sum(all.filter(x => x.envelope === en)));
+  const envData = envLabels.map(en => sumAmount(all.filter(x => x.envelope === en)));
 
   const typeMap = new Map();
   for (const x of all) {
@@ -371,6 +431,7 @@ function importCsv(file) {
     state.expenses = nextExpenses;
     editingId = null;
     renderAll();
+    scheduleAutosave("import CSV");
   };
   reader.readAsText(file, "utf-8");
 }
@@ -414,6 +475,7 @@ function wireEvents() {
 
     e.target.reset();
     renderAll();
+    scheduleAutosave("ajout");
   });
 
   // Edit/Delete row (event delegation)
@@ -427,13 +489,14 @@ function wireEvents() {
       state.expenses = state.expenses.filter(x => x.id !== id);
       if (editingId === id) editingId = null;
       renderAll();
+      scheduleAutosave("suppression");
       return;
     }
 
     // Enter edit mode
     if (e.target.closest(".btnEdit")) {
       editingId = id;
-      renderTable(); // table only is enough
+      renderTable(); // table only
       return;
     }
 
@@ -470,7 +533,8 @@ function wireEvents() {
 
       state.expenses = state.expenses.map(x => (x.id === id ? next : x));
       editingId = null;
-      renderAll(); // ✅ table + totaux + graphes
+      renderAll();
+      scheduleAutosave("modif");
       return;
     }
   });
@@ -481,7 +545,7 @@ function wireEvents() {
     $(sel).addEventListener("change", renderTable);
   });
 
-  // Save budgets
+  // Save budgets (on garde le bouton + autosave aussi)
   $("#btnSaveBudgets").addEventListener("click", async () => {
     try {
       readBudgets();
@@ -494,7 +558,7 @@ function wireEvents() {
     }
   });
 
-  // Save all
+  // Manual save
   $("#btnSave").addEventListener("click", async () => {
     try {
       await apiSave();
@@ -514,6 +578,10 @@ function wireEvents() {
     if (f) importCsv(f);
     e.target.value = "";
   });
+
+  // Autosave sur changement budgets (sans cliquer)
+  $("#budgetFonct").addEventListener("input", () => { readBudgets(); renderTable(); renderCharts(); scheduleAutosave("budget"); });
+  $("#budgetInv").addEventListener("input", () => { readBudgets(); renderTable(); renderCharts(); scheduleAutosave("budget"); });
 }
 
 // -------------------- Boot --------------------
