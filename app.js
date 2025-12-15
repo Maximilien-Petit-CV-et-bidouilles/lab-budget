@@ -1,22 +1,25 @@
-// ---------------------------
-// Config
-// ---------------------------
+// ==============================
+// Budget labo — V1 complète
+// - Netlify Identity (JWT Bearer)
+// - Netlify Functions (/api/data)
+// - Import/Export CSV + Export JSON
+// - Stats + Graphiques (Chart.js)
+// - Edition de ligne (Modifier / OK / Annuler)
+// ==============================
+
 const API = "/api/data";
 
-// ---------------------------
-// State
-// ---------------------------
 let state = {
   budgets: { Fonctionnement: 0, Investissement: 0 },
   expenses: []
 };
 
 let charts = {};
+let editingId = null;
+
 const $ = (sel) => document.querySelector(sel);
 
-// ---------------------------
-// Helpers
-// ---------------------------
+// -------------------- Helpers --------------------
 function euro(n) {
   return (Number(n) || 0).toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
 }
@@ -35,27 +38,39 @@ function setSaveStatus(msg) {
   if (msg) setTimeout(() => (el.textContent = ""), 2500);
 }
 
-// ---------------------------
-// Netlify Identity helpers
-// ---------------------------
-function getIdentity() {
+// -------------------- Options (pour édition) --------------------
+const TYPE_OPTIONS = [
+  "Orga manifestation scientifique",
+  "Aide à la publication",
+  "Mission France",
+  "Mission Europe",
+  "Mission International",
+  "Achat matériel informatique",
+  "Achat logiciels",
+  "Autre"
+];
+const ENVELOPE_OPTIONS = ["Fonctionnement", "Investissement"];
+const STATUS_OPTIONS = ["Votée", "Engagée", "Service fait"];
+
+function optionsHtml(list, current) {
+  return list
+    .map(v => `<option value="${escapeHtml(v)}" ${v === current ? "selected" : ""}>${escapeHtml(v)}</option>`)
+    .join("");
+}
+
+// -------------------- Identity --------------------
+function idWidget() {
   return window.netlifyIdentity || null;
 }
 function currentUser() {
-  const id = getIdentity();
+  const id = idWidget();
   return id && typeof id.currentUser === "function" ? id.currentUser() : null;
 }
-function requireAuthUI() {
+function updateAuthButtons() {
   const user = currentUser();
-  const btnLogin = $("#btnLogin");
-  const btnLogout = $("#btnLogout");
-  if (btnLogin) btnLogin.style.display = user ? "none" : "inline-flex";
-  if (btnLogout) btnLogout.style.display = user ? "inline-flex" : "none";
+  $("#btnLogin").style.display = user ? "none" : "inline-flex";
+  $("#btnLogout").style.display = user ? "inline-flex" : "none";
 }
-
-/**
- * IMPORTANT: on envoie le JWT dans Authorization: Bearer <token>
- */
 async function authHeaders() {
   const user = currentUser();
   if (!user) return {};
@@ -63,68 +78,48 @@ async function authHeaders() {
   return { Authorization: `Bearer ${token}` };
 }
 
-// ---------------------------
-// API
-// ---------------------------
+// -------------------- API --------------------
 async function apiGet() {
   const headers = await authHeaders();
-
   const res = await fetch(API, { method: "GET", headers });
   const text = await res.text();
-
   if (res.status === 401) throw new Error("AUTH");
-  if (!res.ok) throw new Error(`API ${res.status}: ${text}`);
-
+  if (!res.ok) throw new Error(`GET ${res.status}: ${text}`);
   return JSON.parse(text);
 }
 
 async function apiSave() {
   const headers = { ...(await authHeaders()), "content-type": "application/json" };
-
-  const res = await fetch(API, {
-    method: "PUT",
-    headers,
-    body: JSON.stringify(state)
-  });
-
+  const res = await fetch(API, { method: "PUT", headers, body: JSON.stringify(state) });
   const text = await res.text();
-
   if (res.status === 401) throw new Error("AUTH");
-  if (!res.ok) throw new Error(`SAVE ${res.status}: ${text}`);
-
+  if (!res.ok) throw new Error(`PUT ${res.status}: ${text}`);
   return JSON.parse(text);
 }
 
 function normalize(data) {
-  const budgets = data?.budgets || { Fonctionnement: 0, Investissement: 0 };
-  const expenses = Array.isArray(data?.expenses) ? data.expenses : [];
-  return { budgets, expenses };
+  return {
+    budgets: data?.budgets || { Fonctionnement: 0, Investissement: 0 },
+    expenses: Array.isArray(data?.expenses) ? data.expenses : []
+  };
 }
 
-// ---------------------------
-// Budgets UI
-// ---------------------------
+// -------------------- Budgets UI --------------------
 function renderBudgets() {
-  const bf = $("#budgetFonct");
-  const bi = $("#budgetInv");
-  if (bf) bf.value = state.budgets.Fonctionnement ?? 0;
-  if (bi) bi.value = state.budgets.Investissement ?? 0;
+  $("#budgetFonct").value = state.budgets.Fonctionnement ?? 0;
+  $("#budgetInv").value = state.budgets.Investissement ?? 0;
 }
-function readBudgetsFromInputs() {
-  const bf = $("#budgetFonct");
-  const bi = $("#budgetInv");
-  state.budgets.Fonctionnement = Number(bf?.value || 0);
-  state.budgets.Investissement = Number(bi?.value || 0);
+function readBudgets() {
+  state.budgets.Fonctionnement = Number($("#budgetFonct").value || 0);
+  state.budgets.Investissement = Number($("#budgetInv").value || 0);
 }
 
-// ---------------------------
-// Table + filters
-// ---------------------------
+// -------------------- Filtering --------------------
 function filteredExpenses() {
-  const q = ($("#q")?.value || "").trim().toLowerCase();
-  const s = $("#filterStatus")?.value || "";
-  const e = $("#filterEnvelope")?.value || "";
-  const t = $("#filterType")?.value || "";
+  const q = ($("#q").value || "").trim().toLowerCase();
+  const s = $("#filterStatus").value || "";
+  const e = $("#filterEnvelope").value || "";
+  const t = $("#filterType").value || "";
 
   return state.expenses
     .filter(x => !q || ((x.label || "") + " " + (x.project || "")).toLowerCase().includes(q))
@@ -134,22 +129,63 @@ function filteredExpenses() {
     .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
 }
 
+// -------------------- Table + totals (avec édition) --------------------
 function renderTable() {
   const tbody = $("#tbody");
   if (!tbody) return;
 
-  const rows = filteredExpenses().map(x => `
-    <tr data-id="${x.id}">
-      <td>${escapeHtml(x.date || "")}</td>
-      <td>${escapeHtml(x.label || "")}</td>
-      <td>${escapeHtml(x.type || "")}</td>
-      <td>${escapeHtml(x.envelope || "")}</td>
-      <td>${escapeHtml(x.project || "")}</td>
-      <td>${escapeHtml(x.status || "")}</td>
-      <td class="right">${euro(x.amount)}</td>
-      <td><button class="btn btn-ghost btnDel" type="button">Suppr.</button></td>
-    </tr>
-  `).join("");
+  const rows = filteredExpenses().map(x => {
+    const isEditing = editingId === x.id;
+
+    if (!isEditing) {
+      return `
+        <tr data-id="${x.id}">
+          <td>${escapeHtml(x.date || "")}</td>
+          <td>${escapeHtml(x.label || "")}</td>
+          <td>${escapeHtml(x.type || "")}</td>
+          <td>${escapeHtml(x.envelope || "")}</td>
+          <td>${escapeHtml(x.project || "")}</td>
+          <td>${escapeHtml(x.status || "")}</td>
+          <td class="right">${euro(x.amount)}</td>
+          <td>
+            <button class="btn btn-ghost btnEdit" type="button">✏️ Modifier</button>
+            <button class="btn btn-ghost btnDel" type="button">🗑️</button>
+          </td>
+        </tr>
+      `;
+    }
+
+    // Mode édition
+    return `
+      <tr data-id="${x.id}">
+        <td><input class="editDate" type="date" value="${escapeHtml(x.date || "")}"></td>
+        <td><input class="editLabel" type="text" value="${escapeHtml(x.label || "")}"></td>
+        <td>
+          <select class="editType">
+            ${optionsHtml(TYPE_OPTIONS, x.type || "Autre")}
+          </select>
+        </td>
+        <td>
+          <select class="editEnvelope">
+            ${optionsHtml(ENVELOPE_OPTIONS, x.envelope || "Fonctionnement")}
+          </select>
+        </td>
+        <td><input class="editProject" type="text" value="${escapeHtml(x.project || "")}"></td>
+        <td>
+          <select class="editStatus">
+            ${optionsHtml(STATUS_OPTIONS, x.status || "Votée")}
+          </select>
+        </td>
+        <td class="right">
+          <input class="editAmount" type="number" step="0.01" min="0" value="${escapeHtml(x.amount ?? 0)}" style="width:120px;">
+        </td>
+        <td>
+          <button class="btn btn-primary btnRowSave" type="button">✅ OK</button>
+          <button class="btn btn-ghost btnRowCancel" type="button">↩️ Annuler</button>
+        </td>
+      </tr>
+    `;
+  }).join("");
 
   tbody.innerHTML = rows || `<tr><td colspan="8" class="muted">Aucune dépense</td></tr>`;
 
@@ -171,19 +207,14 @@ function renderTable() {
   const resteFonct = (state.budgets.Fonctionnement || 0) - byEnvelope.Fonctionnement;
   const resteInv = (state.budgets.Investissement || 0) - byEnvelope.Investissement;
 
-  const totals = $("#totals");
-  if (totals) {
-    totals.innerHTML = `
-      <div><b>Total</b> : ${euro(sum(all))}</div>
-      <div>Par statut — Votée: ${euro(byStatus["Votée"])} • Engagée: ${euro(byStatus["Engagée"])} • Service fait: ${euro(byStatus["Service fait"])}</div>
-      <div>Reste budgets — Fonctionnement: ${euro(resteFonct)} • Investissement: ${euro(resteInv)}</div>
-    `;
-  }
+  $("#totals").innerHTML = `
+    <div><b>Total</b> : ${euro(sum(all))}</div>
+    <div>Par statut — Votée: ${euro(byStatus["Votée"])} • Engagée: ${euro(byStatus["Engagée"])} • Service fait: ${euro(byStatus["Service fait"])}</div>
+    <div>Reste budgets — Fonctionnement: ${euro(resteFonct)} • Investissement: ${euro(resteInv)}</div>
+  `;
 }
 
-// ---------------------------
-// Charts
-// ---------------------------
+// -------------------- Charts --------------------
 function buildStats() {
   const all = state.expenses;
   const sum = (arr) => arr.reduce((acc, x) => acc + (Number(x.amount) || 0), 0);
@@ -216,49 +247,37 @@ function buildStats() {
 }
 
 function renderCharts() {
-  if (!window.Chart) return; // Chart.js pas chargé
-  const s = buildStats();
+  if (!window.Chart) return;
 
-  // destroy previous charts
   for (const k of Object.keys(charts)) charts[k]?.destroy?.();
   charts = {};
 
-  const cStatus = $("#chartStatus");
-  const cEnv = $("#chartEnvelope");
-  const cType = $("#chartType");
-  const cMonth = $("#chartMonthly");
+  const s = buildStats();
 
-  if (cStatus) {
-    charts.status = new Chart(cStatus, {
-      type: "doughnut",
-      data: { labels: s.statusLabels, datasets: [{ data: s.statusData }] }
-    });
-  }
-  if (cEnv) {
-    charts.env = new Chart(cEnv, {
-      type: "doughnut",
-      data: { labels: s.envLabels, datasets: [{ data: s.envData }] }
-    });
-  }
-  if (cType) {
-    charts.type = new Chart(cType, {
-      type: "bar",
-      data: { labels: s.typeLabels, datasets: [{ data: s.typeData }] },
-      options: { plugins: { legend: { display: false } } }
-    });
-  }
-  if (cMonth) {
-    charts.month = new Chart(cMonth, {
-      type: "line",
-      data: { labels: s.months, datasets: [{ data: s.monthlyData }] },
-      options: { plugins: { legend: { display: false } } }
-    });
-  }
+  charts.status = new Chart($("#chartStatus"), {
+    type: "doughnut",
+    data: { labels: s.statusLabels, datasets: [{ data: s.statusData }] }
+  });
+
+  charts.env = new Chart($("#chartEnvelope"), {
+    type: "doughnut",
+    data: { labels: s.envLabels, datasets: [{ data: s.envData }] }
+  });
+
+  charts.type = new Chart($("#chartType"), {
+    type: "bar",
+    data: { labels: s.typeLabels, datasets: [{ data: s.typeData }] },
+    options: { plugins: { legend: { display: false } } }
+  });
+
+  charts.month = new Chart($("#chartMonthly"), {
+    type: "line",
+    data: { labels: s.months, datasets: [{ data: s.monthlyData }] },
+    options: { plugins: { legend: { display: false } } }
+  });
 }
 
-// ---------------------------
-// CSV / JSON export-import
-// ---------------------------
+// -------------------- CSV / JSON --------------------
 function download(filename, content, mime) {
   const blob = new Blob([content], { type: mime || "text/plain" });
   const a = document.createElement("a");
@@ -269,22 +288,24 @@ function download(filename, content, mime) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+
 function csvCell(v) {
   const s = (v ?? "").toString();
   if (/[,"\n;]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
 }
+
 function exportCsv() {
   const headers = ["id", "date", "label", "type", "envelope", "project", "status", "amount"];
   const lines = [headers.join(",")];
-  for (const x of state.expenses) {
-    lines.push(headers.map(h => csvCell(x[h])).join(","));
-  }
+  for (const x of state.expenses) lines.push(headers.map(h => csvCell(x[h])).join(","));
   download("budget-labo.csv", lines.join("\n"), "text/csv;charset=utf-8");
 }
+
 function exportJson() {
   download("budget-labo.json", JSON.stringify(state, null, 2), "application/json;charset=utf-8");
 }
+
 function parseCsv(text) {
   const rows = [];
   let i = 0, field = "", row = [], inQuotes = false;
@@ -314,6 +335,7 @@ function parseCsv(text) {
   if (row.some(x => x.length > 0)) rows.push(row);
   return rows;
 }
+
 function importCsv(file) {
   const reader = new FileReader();
   reader.onload = () => {
@@ -347,36 +369,39 @@ function importCsv(file) {
     }
 
     state.expenses = nextExpenses;
+    editingId = null;
     renderAll();
   };
   reader.readAsText(file, "utf-8");
 }
 
-// ---------------------------
-// Render all
-// ---------------------------
+// -------------------- Render all --------------------
 function renderAll() {
   renderBudgets();
   renderTable();
   renderCharts();
 }
 
-// ---------------------------
-// Wire UI events
-// ---------------------------
+// -------------------- Events --------------------
 function wireEvents() {
-  // Login/Logout
-  $("#btnLogin")?.addEventListener("click", () => getIdentity()?.open());
-  $("#btnLogout")?.addEventListener("click", async () => {
-    await getIdentity()?.logout();
-    requireAuthUI();
+  // Login / Logout
+  $("#btnLogin").addEventListener("click", () => {
+    const id = idWidget();
+    if (!id) return alert("Netlify Identity n’est pas chargé.");
+    id.open();
+  });
+
+  $("#btnLogout").addEventListener("click", async () => {
+    await idWidget()?.logout();
+    updateAuthButtons();
   });
 
   // Add expense
-  $("#expenseForm")?.addEventListener("submit", (e) => {
+  $("#expenseForm").addEventListener("submit", (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    const exp = {
+
+    state.expenses.push({
       id: uid(),
       date: fd.get("date"),
       label: fd.get("label"),
@@ -385,110 +410,153 @@ function wireEvents() {
       project: fd.get("project"),
       status: fd.get("status"),
       amount: Number(fd.get("amount") || 0)
-    };
-    state.expenses.push(exp);
+    });
+
     e.target.reset();
     renderAll();
   });
 
-  // Delete row
-  $("#tbody")?.addEventListener("click", (e) => {
-    const btn = e.target.closest(".btnDel");
-    if (!btn) return;
+  // Edit/Delete row (event delegation)
+  $("#tbody").addEventListener("click", (e) => {
     const tr = e.target.closest("tr");
     const id = tr?.getAttribute("data-id");
-    state.expenses = state.expenses.filter(x => x.id !== id);
-    renderAll();
+    if (!id) return;
+
+    // Delete
+    if (e.target.closest(".btnDel")) {
+      state.expenses = state.expenses.filter(x => x.id !== id);
+      if (editingId === id) editingId = null;
+      renderAll();
+      return;
+    }
+
+    // Enter edit mode
+    if (e.target.closest(".btnEdit")) {
+      editingId = id;
+      renderTable(); // table only is enough
+      return;
+    }
+
+    // Cancel edit
+    if (e.target.closest(".btnRowCancel")) {
+      editingId = null;
+      renderTable();
+      return;
+    }
+
+    // Save edit
+    if (e.target.closest(".btnRowSave")) {
+      const get = (sel) => tr.querySelector(sel);
+
+      const next = {
+        id,
+        date: get(".editDate")?.value || "",
+        label: get(".editLabel")?.value || "",
+        type: get(".editType")?.value || "Autre",
+        envelope: get(".editEnvelope")?.value || "Fonctionnement",
+        project: get(".editProject")?.value || "",
+        status: get(".editStatus")?.value || "Votée",
+        amount: Number(get(".editAmount")?.value || 0)
+      };
+
+      if (!next.label.trim()) {
+        alert("Le libellé est obligatoire.");
+        return;
+      }
+      if (Number.isNaN(next.amount) || next.amount < 0) {
+        alert("Le montant doit être un nombre ≥ 0.");
+        return;
+      }
+
+      state.expenses = state.expenses.map(x => (x.id === id ? next : x));
+      editingId = null;
+      renderAll(); // ✅ table + totaux + graphes
+      return;
+    }
   });
 
   // Filters
   ["#q", "#filterStatus", "#filterEnvelope", "#filterType"].forEach(sel => {
-    $(sel)?.addEventListener("input", () => renderTable());
-    $(sel)?.addEventListener("change", () => renderTable());
+    $(sel).addEventListener("input", renderTable);
+    $(sel).addEventListener("change", renderTable);
   });
 
   // Save budgets
-  $("#btnSaveBudgets")?.addEventListener("click", async () => {
+  $("#btnSaveBudgets").addEventListener("click", async () => {
     try {
-      readBudgetsFromInputs();
+      readBudgets();
       await apiSave();
       setSaveStatus("Budgets enregistrés ✅");
       renderAll();
-    } catch (err) {
-      if (String(err?.message) === "AUTH") getIdentity()?.open();
-      else alert("Erreur : " + (err?.message || err));
+    } catch (e) {
+      if (e.message === "AUTH") idWidget()?.open();
+      else alert("Erreur sauvegarde budgets:\n" + e.message);
     }
   });
 
   // Save all
-  $("#btnSave")?.addEventListener("click", async () => {
+  $("#btnSave").addEventListener("click", async () => {
     try {
       await apiSave();
       setSaveStatus("Sauvegardé ✅");
-    } catch (err) {
-      if (String(err?.message) === "AUTH") getIdentity()?.open();
-      else alert("Erreur : " + (err?.message || err));
+    } catch (e) {
+      if (e.message === "AUTH") idWidget()?.open();
+      else alert("Erreur sauvegarde:\n" + e.message);
     }
   });
 
   // Export/Import
-  $("#btnExportCsv")?.addEventListener("click", exportCsv);
-  $("#btnExportJson")?.addEventListener("click", exportJson);
+  $("#btnExportCsv").addEventListener("click", exportCsv);
+  $("#btnExportJson").addEventListener("click", exportJson);
 
-  $("#fileCsv")?.addEventListener("change", (e) => {
+  $("#fileCsv").addEventListener("change", (e) => {
     const f = e.target.files?.[0];
     if (f) importCsv(f);
     e.target.value = "";
   });
 }
 
-// ---------------------------
-// Bootstrap
-// ---------------------------
-async function bootstrap() {
+// -------------------- Boot --------------------
+async function boot() {
   wireEvents();
 
-  const id = getIdentity();
+  const id = idWidget();
   if (!id) {
-    // widget pas chargé
     renderAll();
     return;
   }
 
-  id.on("init", () => {
-    requireAuthUI();
-  });
+  id.on("init", () => updateAuthButtons());
 
   id.on("login", async () => {
-    requireAuthUI();
+    updateAuthButtons();
     try {
       const data = await apiGet();
       state = normalize(data);
+      editingId = null;
       renderAll();
       id.close();
     } catch (e) {
-      // message explicite
-      alert("Connexion OK, mais chargement KO :\n" + (e?.message || e));
+      alert("Connexion OK, mais chargement KO :\n" + e.message);
     }
   });
 
   id.on("logout", () => {
-    requireAuthUI();
+    updateAuthButtons();
   });
 
-  // Au chargement : si déjà connecté, on tente de charger
-  requireAuthUI();
+  // si déjà connecté (session), charger au démarrage
+  updateAuthButtons();
   try {
     if (currentUser()) {
       const data = await apiGet();
       state = normalize(data);
     }
   } catch (e) {
-    // si erreur, on laisse l'UI vide mais fonctionnelle
-    console.warn("Load failed:", e);
+    console.warn("Initial load failed:", e);
   }
 
   renderAll();
 }
 
-bootstrap();
+boot();
