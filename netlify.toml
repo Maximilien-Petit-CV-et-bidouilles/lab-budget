@@ -2,6 +2,13 @@
   publish = "."
   functions = "netlify/functions"
 
+# IMPORTANT : laisser passer les routes internes Netlify
+[[redirects]]
+  from = "/.netlify/*"
+  to = "/.netlify/:splat"
+  status = 200
+
+# API (fonctions Netlify)
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
