@@ -18,7 +18,7 @@
   <header class="topbar">
     <div>
       <h1>Budget laboratoire</h1>
-      <p class="muted">Dépenses : votées / engagées / service fait • Enveloppes : fonctionnement / investissement • Projets</p>
+      <p class="muted">Budgets • Dépenses • Suivi devis → BC → service fait → facture • Projets</p>
     </div>
     <div class="topbar-actions">
       <button id="btnLogin" class="btn">Se connecter</button>
@@ -54,19 +54,29 @@
           </label>
           <button id="btnExportJson" class="btn btn-ghost">Exporter JSON</button>
         </div>
-        <p class="muted small">Astuce : garde un CSV “source” (Excel/LibreOffice) si tu veux une saisie rapide.</p>
+        <p class="muted small">Astuce : garde un CSV “source” (Excel/LibreOffice) pour une saisie rapide.</p>
       </div>
+    </section>
+
+    <section class="card">
+      <h2>Relances (workflow)</h2>
+      <p class="muted small">Automatique : devis sans BC, BC sans service fait, service fait sans facture (seuils configurés dans app.js).</p>
+      <div id="reminders" class="muted">—</div>
     </section>
 
     <section class="card">
       <h2>Ajouter une dépense</h2>
       <form id="expenseForm" class="grid">
-        <label>Date
+        <label>Date (création / saisie)
           <input name="date" type="date" required />
         </label>
 
         <label>Libellé
           <input name="label" type="text" required placeholder="Ex : Billets train colloque…" />
+        </label>
+
+        <label>Fournisseur (optionnel)
+          <input name="supplier" type="text" placeholder="Ex : SNCF / Dell / …" />
         </label>
 
         <label>Type de dépense
@@ -93,7 +103,7 @@
           <input name="project" type="text" placeholder="Ex : ANR X / EquipEx Y / …" />
         </label>
 
-        <label>Statut
+        <label>Statut (budgétaire)
           <select name="status" required>
             <option value="Votée">Votée</option>
             <option value="Engagée">Engagée</option>
@@ -105,6 +115,32 @@
           <input name="amount" type="number" step="0.01" min="0" required />
         </label>
 
+        <details class="details">
+          <summary>Suivi administratif (devis / BC / facture)</summary>
+          <div class="grid2">
+            <label>N° devis
+              <input name="quoteNumber" type="text" placeholder="Ex : DV-2025-001" />
+            </label>
+            <label>Date devis
+              <input name="quoteDate" type="date" />
+            </label>
+
+            <label>N° Bon de commande (BC)
+              <input name="poNumber" type="text" placeholder="Ex : BC-2025-1234" />
+            </label>
+            <label>Date BC
+              <input name="poDate" type="date" />
+            </label>
+
+            <label>N° facture
+              <input name="invoiceNumber" type="text" placeholder="Ex : F-2025-987" />
+            </label>
+            <label>Date facture
+              <input name="invoiceDate" type="date" />
+            </label>
+          </div>
+        </details>
+
         <div class="row">
           <button class="btn btn-primary" type="submit">Ajouter</button>
         </div>
@@ -115,7 +151,7 @@
       <h2>Liste des dépenses</h2>
 
       <div class="row wrap">
-        <input id="q" class="search" placeholder="Rechercher (libellé / projet)..." />
+        <input id="q" class="search" placeholder="Rechercher (libellé / projet / fournisseur / refs)..." />
         <select id="filterStatus">
           <option value="">Tous statuts</option>
           <option value="Votée">Votée</option>
@@ -146,6 +182,8 @@
             <tr>
               <th>Date</th>
               <th>Libellé</th>
+              <th>Fournisseur</th>
+              <th>Réfs (devis/BC/fact)</th>
               <th>Type</th>
               <th>Enveloppe</th>
               <th>Projet</th>
