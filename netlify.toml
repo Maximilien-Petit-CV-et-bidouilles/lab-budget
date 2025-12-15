@@ -11,11 +11,6 @@
   external_node_modules = ["@netlify/blobs"]
 
 [[redirects]]
-  from = "/.netlify/*"
-  to = "/.netlify/:splat"
-  status = 200
-
-[[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
   status = 200
