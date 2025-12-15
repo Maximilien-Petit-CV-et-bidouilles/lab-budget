@@ -40,28 +40,37 @@ function requireAuthUI(){
   $("#btnLogout").style.display = user ? "inline-flex" : "none";
 }
 
-async function apiGet(){
+async function apiGet() {
   const headers = await authHeaders();
+
   const res = await fetch(API, {
     method: "GET",
     headers
   });
+
+  const text = await res.text(); // on lit toujours la réponse pour debug
   if (res.status === 401) throw new Error("AUTH");
-  if (!res.ok) throw new Error("Erreur API");
-  return res.json();
+  if (!res.ok) throw new Error(`API ${res.status}: ${text}`);
+
+  return JSON.parse(text);
 }
 
-async function apiSave(){
-  const headers = { ...(await authHeaders()), "content-type":"application/json" };
+async function apiSave() {
+  const headers = { ...(await authHeaders()), "content-type": "application/json" };
+
   const res = await fetch(API, {
-    method:"PUT",
+    method: "PUT",
     headers,
     body: JSON.stringify(state)
   });
+
+  const text = await res.text();
   if (res.status === 401) throw new Error("AUTH");
-  if (!res.ok) throw new Error("Erreur sauvegarde");
-  return res.json();
+  if (!res.ok) throw new Error(`SAVE ${res.status}: ${text}`);
+
+  return JSON.parse(text);
 }
+
 
 function setSaveStatus(msg){
   $("#saveStatus").textContent = msg || "";
