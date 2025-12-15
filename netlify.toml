@@ -1,14 +1,16 @@
 [build]
   publish = "."
   functions = "netlify/functions"
+  command = "npm install"
 
-# IMPORTANT : laisser passer les routes internes Netlify
+[build.environment]
+  NODE_VERSION = "20"
+
 [[redirects]]
   from = "/.netlify/*"
   to = "/.netlify/:splat"
   status = 200
 
-# API (fonctions Netlify)
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
