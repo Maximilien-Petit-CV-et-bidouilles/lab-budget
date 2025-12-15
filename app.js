@@ -424,11 +424,10 @@ async function bootstrap(){
       // UI vide par défaut
       renderAll();
     }
-  } catch(e){
-    // si pas connecté, on affiche quand même l’UI
-    renderAll();
-  }
+ } catch (e) {
+  alert("Connexion OK, mais chargement KO :\n" + (e?.message || e));
 }
+
 
 function normalize(data){
   const budgets = data?.budgets || { Fonctionnement: 0, Investissement: 0 };
