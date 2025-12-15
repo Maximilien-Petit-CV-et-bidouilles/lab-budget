@@ -1,5 +1,19 @@
 const API = "/api/data";
 
+function getUser() {
+  return window.netlifyIdentity && window.netlifyIdentity.currentUser
+    ? window.netlifyIdentity.currentUser()
+    : null;
+}
+
+async function authHeaders() {
+  const user = getUser();
+  if (!user) return {};
+  const token = await user.jwt(); // JWT Netlify Identity
+  return { Authorization: `Bearer ${token}` };
+}
+
+
 async function authHeaders() {
   const user = window.netlifyIdentity?.currentUser();
   if (!user) return {};
