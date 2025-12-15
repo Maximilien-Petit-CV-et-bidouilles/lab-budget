@@ -1,51 +1,59 @@
-import { getStore } from "@netlify/blobs";
+const { getStore } = require("@netlify/blobs");
 
-export default async (request, context) => {
+exports.handler = async (event, context) => {
   try {
-    // Auth: nécessite un utilisateur Netlify Identity connecté
-    const user = context?.clientContext?.user;
+    // Auth: nécessite Netlify Identity connecté
+    const user = context && context.clientContext && context.clientContext.user;
     if (!user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { "content-type": "application/json" }
-      });
+      return {
+        statusCode: 401,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ error: "Unauthorized" })
+      };
     }
 
-    const store = getStore("lab-budget"); // nom du store
+    const store = getStore("lab-budget");
     const key = "data.json";
 
-    if (request.method === "GET") {
+    if (event.httpMethod === "GET") {
       const raw = await store.get(key, { type: "json" });
-      return new Response(JSON.stringify(raw ?? { expenses: [] }), {
-        status: 200,
-        headers: { "content-type": "application/json" }
-      });
+      return {
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(raw || { budgets: { Fonctionnement: 0, Investissement: 0 }, expenses: [] })
+      };
     }
 
-    if (request.method === "PUT") {
-      const body = await request.json();
-      // minimal validation
+    if (event.httpMethod === "PUT") {
+      const body = event.body ? JSON.parse(event.body) : null;
+
       if (!body || !Array.isArray(body.expenses)) {
-        return new Response(JSON.stringify({ error: "Bad payload" }), {
-          status: 400,
-          headers: { "content-type": "application/json" }
-        });
+        return {
+          statusCode: 400,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ error: "Bad payload" })
+        };
       }
+
       await store.set(key, body);
-      return new Response(JSON.stringify({ ok: true }), {
-        status: 200,
-        headers: { "content-type": "application/json" }
-      });
+
+      return {
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ok: true })
+      };
     }
 
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { "content-type": "application/json" }
-    });
+    return {
+      statusCode: 405,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ error: "Method not allowed" })
+    };
   } catch (e) {
-    return new Response(JSON.stringify({ error: String(e) }), {
-      status: 500,
-      headers: { "content-type": "application/json" }
-    });
+    return {
+      statusCode: 500,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ error: String(e) })
+    };
   }
 };
