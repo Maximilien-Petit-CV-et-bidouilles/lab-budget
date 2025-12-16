@@ -19,6 +19,34 @@ const THRESHOLD_SF_TO_INVOICE = 15;
 
 const $ = (sel) => document.querySelector(sel);
 
+// -------------------- Theme (clair/sombre) --------------------
+const THEME_KEY = "lab_budget_theme"; // "light" | "dark"
+
+function applyTheme(mode) {
+  const isLight = mode === "light";
+  document.body.classList.toggle("theme-light", isLight);
+
+  const btn = $("#btnTheme");
+  if (btn) btn.textContent = isLight ? "🌙 Sombre" : "☀️ Clair";
+}
+
+function initTheme() {
+  const saved = localStorage.getItem(THEME_KEY);
+  if (saved === "light" || saved === "dark") {
+    applyTheme(saved);
+  } else {
+    // Défaut : sombre
+    applyTheme("dark");
+  }
+}
+
+function toggleTheme() {
+  const isLight = document.body.classList.contains("theme-light");
+  const next = isLight ? "dark" : "light";
+  localStorage.setItem(THEME_KEY, next);
+  applyTheme(next);
+}
+
 // -------------------- Helpers --------------------
 function euro(n) {
   return (Number(n) || 0).toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
@@ -374,20 +402,14 @@ function renderTable() {
         <td><input class="editSupplier2" type="text" value="${escapeHtml(x.supplier || "")}" placeholder="(optionnel)"></td>
         <td>${refsCell(x)}</td>
         <td>
-          <select class="editType">
-            ${optionsHtml(TYPE_OPTIONS, x.type || "Autre")}
-          </select>
+          <select class="editType">${optionsHtml(TYPE_OPTIONS, x.type || "Autre")}</select>
         </td>
         <td>
-          <select class="editEnvelope">
-            ${optionsHtml(ENVELOPE_OPTIONS, x.envelope || "Fonctionnement")}
-          </select>
+          <select class="editEnvelope">${optionsHtml(ENVELOPE_OPTIONS, x.envelope || "Fonctionnement")}</select>
         </td>
         <td><input class="editProject" type="text" value="${escapeHtml(x.project || "")}"></td>
         <td>
-          <select class="editStatus">
-            ${optionsHtml(STATUS_OPTIONS, x.status || "Votée")}
-          </select>
+          <select class="editStatus">${optionsHtml(STATUS_OPTIONS, x.status || "Votée")}</select>
         </td>
         <td class="right">
           <input class="editAmount" type="number" step="0.01" min="0" value="${escapeHtml(x.amount ?? 0)}" style="width:120px;">
@@ -620,7 +642,7 @@ function importCsv(file) {
 
 // -------------------- Render all --------------------
 function renderAll() {
-  // Hors connexion, on ne force pas des rendus inutiles
+  // Hors connexion, on ne rend pas les zones masquées (CSS gère), et on évite les calculs
   if (!currentUser()) {
     updateAuthButtons();
     return;
@@ -635,11 +657,12 @@ function renderAll() {
 
 // -------------------- Events --------------------
 function wireEvents() {
+  $("#btnTheme")?.addEventListener("click", toggleTheme);
+
   $("#btnLogin")?.addEventListener("click", () => idWidget()?.open());
   $("#btnLogin2")?.addEventListener("click", () => idWidget()?.open());
   $("#btnLogout")?.addEventListener("click", async () => { await idWidget()?.logout(); updateAuthButtons(); });
 
-  // Form add expense
   $("#expenseForm")?.addEventListener("submit", (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -668,7 +691,6 @@ function wireEvents() {
     scheduleAutosave("ajout");
   });
 
-  // Table edit/delete
   $("#tbody")?.addEventListener("click", (e) => {
     const tr = e.target.closest("tr");
     const id = tr?.getAttribute("data-id");
@@ -726,13 +748,11 @@ function wireEvents() {
     }
   });
 
-  // Filters
   ["#q", "#filterOwner", "#filterStatus", "#filterEnvelope", "#filterType"].forEach(sel => {
     $(sel)?.addEventListener("input", renderTable);
     $(sel)?.addEventListener("change", renderTable);
   });
 
-  // Budgets
   $("#btnSaveBudgets")?.addEventListener("click", async () => {
     try {
       readBudgets();
@@ -758,7 +778,6 @@ function wireEvents() {
   $("#budgetFonct")?.addEventListener("input", () => { readBudgets(); renderAll(); scheduleAutosave("budget"); });
   $("#budgetInv")?.addEventListener("input", () => { readBudgets(); renderAll(); scheduleAutosave("budget"); });
 
-  // Export/Import
   $("#btnExportCsv")?.addEventListener("click", exportCsv);
   $("#btnExportJson")?.addEventListener("click", exportJson);
 
@@ -772,16 +791,11 @@ function wireEvents() {
 // -------------------- Boot --------------------
 async function boot() {
   wireEvents();
+  initTheme();
+  updateAuthButtons();
 
   const id = idWidget();
-  if (!id) {
-    // sans identity, on rend juste l’UI
-    updateAuthButtons();
-    return;
-  }
-
-  // init
-  updateAuthButtons();
+  if (!id) return;
 
   id.on("init", () => updateAuthButtons());
 
@@ -800,10 +814,9 @@ async function boot() {
 
   id.on("logout", () => {
     updateAuthButtons();
-    // on ne purge pas forcément state (mais l’UI est masquée)
   });
 
-  // IMPORTANT : au démarrage, on charge SEULEMENT si déjà connecté
+  // Au démarrage : charge SEULEMENT si déjà connecté
   try {
     if (currentUser()) {
       const data = await apiGet();
