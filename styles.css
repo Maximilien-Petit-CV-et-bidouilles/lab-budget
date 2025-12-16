@@ -58,3 +58,169 @@ tfoot td{ border-bottom:none; }
 .details summary{ cursor:pointer; }
 .details{ margin-top: 10px; }
 
+/* ============================
+   Ergonomie V2 — overrides
+   ============================ */
+
+/* Base : meilleures lisibilité et espacements */
+:root{
+  --radius: 14px;
+  --radius-sm: 10px;
+  --shadow: 0 10px 30px rgba(0,0,0,.06);
+  --shadow-sm: 0 6px 16px rgba(0,0,0,.06);
+  --border: 1px solid rgba(0,0,0,.08);
+}
+
+.container { max-width: 1200px; }
+
+.card{
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  border: var(--border);
+}
+
+/* Inputs : focus clair */
+input, select, button, textarea{
+  border-radius: 10px;
+}
+
+input:focus, select:focus, textarea:focus{
+  outline: 3px solid rgba(0,0,0,.12);
+  outline-offset: 2px;
+}
+
+/* Boutons : hiérarchie + clics plus confort */
+.btn{
+  border-radius: 999px;
+  padding: 10px 14px;
+  transition: transform .06s ease, box-shadow .12s ease, background .12s ease;
+}
+
+.btn:active{ transform: translateY(1px); }
+
+.btn-primary{
+  box-shadow: 0 10px 22px rgba(0,0,0,.10);
+}
+
+.btn-ghost{
+  opacity: .92;
+}
+
+/* Badges statut : plus clean */
+.badge{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:2px 10px;
+  border-radius:999px;
+  font-size:12px;
+  line-height:18px;
+  font-weight:650;
+  border:1px solid rgba(0,0,0,.10);
+  white-space:nowrap;
+}
+
+.badge-votee{ background: rgba(0,0,0,.06); }
+.badge-engagee{ background: rgba(255,165,0,.18); }
+.badge-sf{ background: rgba(0,128,0,.18); }
+
+/* Table : sticky header + lisibilité + hover */
+.tableWrap{
+  overflow:auto;
+  border-radius: var(--radius);
+  border: var(--border);
+}
+
+table{
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  min-width: 980px; /* évite trop de casse */
+}
+
+thead th{
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: rgba(255,255,255,.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(0,0,0,.10);
+}
+
+tbody tr:nth-child(odd){
+  background: rgba(0,0,0,.02);
+}
+
+tbody tr:hover{
+  background: rgba(0,0,0,.05);
+}
+
+td, th{
+  padding: 10px 10px;
+  vertical-align: top;
+}
+
+td .muted{ opacity:.75; }
+
+td.right, th.right{
+  text-align:right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Colonne actions : évite que ça “saute” */
+td:last-child{
+  white-space: nowrap;
+}
+
+/* Recherche : plus large + confortable */
+.search{
+  min-width: 320px;
+  padding: 10px 12px;
+}
+
+/* Details (devis/BC/fact) : meilleur rendu */
+details.details{
+  border: 1px solid rgba(0,0,0,.10);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  background: rgba(0,0,0,.02);
+}
+
+details.details > summary{
+  cursor:pointer;
+  font-weight:650;
+  list-style: none;
+}
+
+details.details > summary::-webkit-details-marker{ display:none; }
+
+/* Petit chevron */
+details.details > summary:before{
+  content:"▸";
+  display:inline-block;
+  margin-right:8px;
+  transform: translateY(-1px);
+  opacity:.75;
+}
+
+details.details[open] > summary:before{
+  content:"▾";
+}
+
+/* Relances : lisible */
+.reminders{
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+.reminders li{
+  margin: 6px 0;
+}
+
+/* Responsive : empilement des filtres + cards */
+@media (max-width: 900px){
+  .search{ min-width: 100%; }
+  .row.wrap > *{ flex: 1 1 180px; }
+  table{ min-width: 860px; }
+}
+
+
