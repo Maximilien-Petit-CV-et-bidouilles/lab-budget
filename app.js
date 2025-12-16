@@ -87,10 +87,17 @@ function currentUser() {
   const id = idWidget();
   return id && typeof id.currentUser === "function" ? id.currentUser() : null;
 }
+function updateAuthUI() {
+  const authed = !!currentUser();
+  document.body.classList.toggle("is-auth", authed);
+}
 function updateAuthButtons() {
   const user = currentUser();
-  $("#btnLogin").style.display = user ? "none" : "inline-flex";
-  $("#btnLogout").style.display = user ? "inline-flex" : "none";
+  const btnLogin = $("#btnLogin");
+  const btnLogout = $("#btnLogout");
+  if (btnLogin) btnLogin.style.display = user ? "none" : "inline-flex";
+  if (btnLogout) btnLogout.style.display = user ? "inline-flex" : "none";
+  updateAuthUI();
 }
 async function authHeaders() {
   const user = currentUser();
@@ -120,7 +127,6 @@ function normalize(data) {
   const budgets = data?.budgets || { Fonctionnement: 0, Investissement: 0 };
   const expenses = Array.isArray(data?.expenses) ? data.expenses : [];
 
-  // compat V1/V2 -> garantir champs
   for (const x of expenses) {
     x.owner ||= "";
     x.supplier ||= "";
@@ -157,8 +163,11 @@ function scheduleAutosave(reason = "") {
 
 // -------------------- Budgets UI --------------------
 function renderBudgets() {
-  $("#budgetFonct").value = state.budgets.Fonctionnement ?? 0;
-  $("#budgetInv").value = state.budgets.Investissement ?? 0;
+  const bf = $("#budgetFonct");
+  const bi = $("#budgetInv");
+  if (!bf || !bi) return;
+  bf.value = state.budgets.Fonctionnement ?? 0;
+  bi.value = state.budgets.Investissement ?? 0;
 }
 function readBudgets() {
   state.budgets.Fonctionnement = Number($("#budgetFonct").value || 0);
@@ -174,7 +183,6 @@ function getOwners() {
   }
   return [...set].sort((a, b) => a.localeCompare(b, "fr"));
 }
-
 function renderOwnerFilter() {
   const sel = $("#filterOwner");
   if (!sel) return;
@@ -203,11 +211,11 @@ function searchableText(x) {
 }
 
 function filteredExpenses() {
-  const q = ($("#q").value || "").trim().toLowerCase();
+  const q = ($("#q")?.value || "").trim().toLowerCase();
   const owner = ($("#filterOwner")?.value || "").trim();
-  const s = $("#filterStatus").value || "";
-  const e = $("#filterEnvelope").value || "";
-  const t = $("#filterType").value || "";
+  const s = $("#filterStatus")?.value || "";
+  const e = $("#filterEnvelope")?.value || "";
+  const t = $("#filterType")?.value || "";
 
   return state.expenses
     .filter(x => !q || searchableText(x).includes(q))
@@ -394,7 +402,6 @@ function renderTable() {
 
   tbody.innerHTML = rows || `<tr><td colspan="11" class="muted">Aucune dépense</td></tr>`;
 
-  // Totaux
   const all = state.expenses;
 
   const byStatus = {
@@ -414,23 +421,26 @@ function renderTable() {
   const projTop = totalsByKey(all, "project").slice(0, 6);
   const ownerTop = totalsByKey(all, "owner").slice(0, 6);
 
-  $("#totals").innerHTML = `
-    <div><b>Total</b> : ${euro(sumAmount(all))}</div>
-    <div>Par statut — Votée: ${euro(byStatus["Votée"])} • Engagée: ${euro(byStatus["Engagée"])} • Service fait: ${euro(byStatus["Service fait"])}</div>
-    <div>Reste budgets — Fonctionnement: ${euro(resteFonct)} • Investissement: ${euro(resteInv)}</div>
+  const totalsEl = $("#totals");
+  if (totalsEl) {
+    totalsEl.innerHTML = `
+      <div><b>Total</b> : ${euro(sumAmount(all))}</div>
+      <div>Par statut — Votée: ${euro(byStatus["Votée"])} • Engagée: ${euro(byStatus["Engagée"])} • Service fait: ${euro(byStatus["Service fait"])}</div>
+      <div>Reste budgets — Fonctionnement: ${euro(resteFonct)} • Investissement: ${euro(resteInv)}</div>
 
-    ${
-      ownerTop.length
-        ? `<div style="margin-top:8px;"><b>Totaux par porteur (top)</b> : ${ownerTop.map(([k, v]) => `${escapeHtml(k)} <span class="muted">(${euro(v)})</span>`).join(" • ")}</div>`
-        : `<div style="margin-top:8px;" class="muted">Totaux par porteur : aucun porteur renseigné.</div>`
-    }
+      ${
+        ownerTop.length
+          ? `<div style="margin-top:8px;"><b>Totaux par porteur (top)</b> : ${ownerTop.map(([k, v]) => `${escapeHtml(k)} <span class="muted">(${euro(v)})</span>`).join(" • ")}</div>`
+          : `<div style="margin-top:8px;" class="muted">Totaux par porteur : aucun porteur renseigné.</div>`
+      }
 
-    ${
-      projTop.length
-        ? `<div style="margin-top:6px;"><b>Totaux par projet (top)</b> : ${projTop.map(([k, v]) => `${escapeHtml(k)} <span class="muted">(${euro(v)})</span>`).join(" • ")}</div>`
-        : `<div style="margin-top:6px;" class="muted">Totaux par projet : aucun projet renseigné.</div>`
-    }
-  `;
+      ${
+        projTop.length
+          ? `<div style="margin-top:6px;"><b>Totaux par projet (top)</b> : ${projTop.map(([k, v]) => `${escapeHtml(k)} <span class="muted">(${euro(v)})</span>`).join(" • ")}</div>`
+          : `<div style="margin-top:6px;" class="muted">Totaux par projet : aucun projet renseigné.</div>`
+      }
+    `;
+  }
 }
 
 // -------------------- Charts --------------------
@@ -472,23 +482,29 @@ function renderCharts() {
 
   const s = buildStats();
 
-  charts.status = new Chart($("#chartStatus"), {
+  const cs = $("#chartStatus");
+  const ce = $("#chartEnvelope");
+  const ct = $("#chartType");
+  const cm = $("#chartMonthly");
+  if (!cs || !ce || !ct || !cm) return;
+
+  charts.status = new Chart(cs, {
     type: "doughnut",
     data: { labels: s.statusLabels, datasets: [{ data: s.statusData }] }
   });
 
-  charts.env = new Chart($("#chartEnvelope"), {
+  charts.env = new Chart(ce, {
     type: "doughnut",
     data: { labels: s.envLabels, datasets: [{ data: s.envData }] }
   });
 
-  charts.type = new Chart($("#chartType"), {
+  charts.type = new Chart(ct, {
     type: "bar",
     data: { labels: s.typeLabels, datasets: [{ data: s.typeData }] },
     options: { plugins: { legend: { display: false } } }
   });
 
-  charts.month = new Chart($("#chartMonthly"), {
+  charts.month = new Chart(cm, {
     type: "line",
     data: { labels: s.months, datasets: [{ data: s.monthlyData }] },
     options: { plugins: { legend: { display: false } } }
@@ -604,6 +620,12 @@ function importCsv(file) {
 
 // -------------------- Render all --------------------
 function renderAll() {
+  // Hors connexion, on ne force pas des rendus inutiles
+  if (!currentUser()) {
+    updateAuthButtons();
+    return;
+  }
+
   renderBudgets();
   renderOwnerFilter();
   renderTable();
@@ -613,10 +635,12 @@ function renderAll() {
 
 // -------------------- Events --------------------
 function wireEvents() {
-  $("#btnLogin").addEventListener("click", () => idWidget()?.open());
-  $("#btnLogout").addEventListener("click", async () => { await idWidget()?.logout(); updateAuthButtons(); });
+  $("#btnLogin")?.addEventListener("click", () => idWidget()?.open());
+  $("#btnLogin2")?.addEventListener("click", () => idWidget()?.open());
+  $("#btnLogout")?.addEventListener("click", async () => { await idWidget()?.logout(); updateAuthButtons(); });
 
-  $("#expenseForm").addEventListener("submit", (e) => {
+  // Form add expense
+  $("#expenseForm")?.addEventListener("submit", (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
 
@@ -644,7 +668,8 @@ function wireEvents() {
     scheduleAutosave("ajout");
   });
 
-  $("#tbody").addEventListener("click", (e) => {
+  // Table edit/delete
+  $("#tbody")?.addEventListener("click", (e) => {
     const tr = e.target.closest("tr");
     const id = tr?.getAttribute("data-id");
     if (!id) return;
@@ -703,12 +728,12 @@ function wireEvents() {
 
   // Filters
   ["#q", "#filterOwner", "#filterStatus", "#filterEnvelope", "#filterType"].forEach(sel => {
-    $(sel).addEventListener("input", renderTable);
-    $(sel).addEventListener("change", renderTable);
+    $(sel)?.addEventListener("input", renderTable);
+    $(sel)?.addEventListener("change", renderTable);
   });
 
   // Budgets
-  $("#btnSaveBudgets").addEventListener("click", async () => {
+  $("#btnSaveBudgets")?.addEventListener("click", async () => {
     try {
       readBudgets();
       await apiSave();
@@ -720,7 +745,7 @@ function wireEvents() {
     }
   });
 
-  $("#btnSave").addEventListener("click", async () => {
+  $("#btnSave")?.addEventListener("click", async () => {
     try {
       await apiSave();
       setSaveStatus("Sauvegardé ✅");
@@ -730,14 +755,14 @@ function wireEvents() {
     }
   });
 
-  $("#budgetFonct").addEventListener("input", () => { readBudgets(); renderAll(); scheduleAutosave("budget"); });
-  $("#budgetInv").addEventListener("input", () => { readBudgets(); renderAll(); scheduleAutosave("budget"); });
+  $("#budgetFonct")?.addEventListener("input", () => { readBudgets(); renderAll(); scheduleAutosave("budget"); });
+  $("#budgetInv")?.addEventListener("input", () => { readBudgets(); renderAll(); scheduleAutosave("budget"); });
 
   // Export/Import
-  $("#btnExportCsv").addEventListener("click", exportCsv);
-  $("#btnExportJson").addEventListener("click", exportJson);
+  $("#btnExportCsv")?.addEventListener("click", exportCsv);
+  $("#btnExportJson")?.addEventListener("click", exportJson);
 
-  $("#fileCsv").addEventListener("change", (e) => {
+  $("#fileCsv")?.addEventListener("change", (e) => {
     const f = e.target.files?.[0];
     if (f) importCsv(f);
     e.target.value = "";
@@ -749,7 +774,14 @@ async function boot() {
   wireEvents();
 
   const id = idWidget();
-  if (!id) { renderAll(); return; }
+  if (!id) {
+    // sans identity, on rend juste l’UI
+    updateAuthButtons();
+    return;
+  }
+
+  // init
+  updateAuthButtons();
 
   id.on("init", () => updateAuthButtons());
 
@@ -766,9 +798,12 @@ async function boot() {
     }
   });
 
-  id.on("logout", () => updateAuthButtons());
+  id.on("logout", () => {
+    updateAuthButtons();
+    // on ne purge pas forcément state (mais l’UI est masquée)
+  });
 
-  updateAuthButtons();
+  // IMPORTANT : au démarrage, on charge SEULEMENT si déjà connecté
   try {
     if (currentUser()) {
       const data = await apiGet();
