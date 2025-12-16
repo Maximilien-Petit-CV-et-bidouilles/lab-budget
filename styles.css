@@ -279,5 +279,13 @@ details.details{
   border: 1px solid var(--border);
 }
 
+/* =========================
+   Masquage hors connexion
+   ========================= */
+body:not(.is-auth) .authOnly{ display:none; }
+body.is-auth #authGate{ display:none; }
+
+/* Le bloc de connexion est une carte normale */
+#authGate{ box-shadow: var(--shadow-sm); }
 
 
