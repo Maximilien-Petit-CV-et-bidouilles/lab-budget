@@ -154,34 +154,35 @@
     <section class="card">
       <h2>Liste des dépenses</h2>
 
-      <div class="row wrap">
-        <input id="q" class="search" placeholder="Rechercher (libellé / projet / porteur / fournisseur / refs)..." />
-        <select id="filterOwner">
-          <option value="">Tous porteurs</option>
-        </select>
-        <select id="filterStatus">
-          <option value="">Tous statuts</option>
-          <option value="Votée">Votée</option>
-          <option value="Engagée">Engagée</option>
-          <option value="Service fait">Service fait</option>
-        </select>
-        <select id="filterEnvelope">
-          <option value="">Toutes enveloppes</option>
-          <option value="Fonctionnement">Fonctionnement</option>
-          <option value="Investissement">Investissement</option>
-        </select>
-        <select id="filterType">
-          <option value="">Tous types</option>
-          <option>Orga manifestation scientifique</option>
-          <option>Aide à la publication</option>
-          <option>Mission France</option>
-          <option>Mission Europe</option>
-          <option>Mission International</option>
-          <option>Achat matériel informatique</option>
-          <option>Achat logiciels</option>
-          <option>Autre</option>
-        </select>
-      </div>
+     <div class="row wrap filtersBar">
+  <input id="q" class="search" placeholder="Rechercher (libellé / projet / porteur / fournisseur / refs)..." />
+  <select id="filterOwner">
+    <option value="">Tous porteurs</option>
+  </select>
+  <select id="filterStatus">
+    <option value="">Tous statuts</option>
+    <option value="Votée">Votée</option>
+    <option value="Engagée">Engagée</option>
+    <option value="Service fait">Service fait</option>
+  </select>
+  <select id="filterEnvelope">
+    <option value="">Toutes enveloppes</option>
+    <option value="Fonctionnement">Fonctionnement</option>
+    <option value="Investissement">Investissement</option>
+  </select>
+  <select id="filterType">
+    <option value="">Tous types</option>
+    <option>Orga manifestation scientifique</option>
+    <option>Aide à la publication</option>
+    <option>Mission France</option>
+    <option>Mission Europe</option>
+    <option>Mission International</option>
+    <option>Achat matériel informatique</option>
+    <option>Achat logiciels</option>
+    <option>Autre</option>
+  </select>
+</div>
+
 
       <div class="tableWrap">
         <table>
