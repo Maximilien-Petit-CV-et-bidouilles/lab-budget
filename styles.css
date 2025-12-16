@@ -33,7 +33,7 @@
   --stickyTop: 72px; /* hauteur topbar approx */
 }
 
-/* Mode clair (optionnel) : ajoute class="theme-light" sur <body> */
+/* Mode clair : ajoute class="theme-light" sur <body> */
 body.theme-light{
   --bg: #f7f7f8;
   --panel: #ffffff;
@@ -163,9 +163,7 @@ input.search{ flex:1; min-width:240px; }
 .btn:hover{ background: color-mix(in srgb, var(--panel-2) 70%, var(--soft)); }
 .btn:active{ transform: translateY(1px); }
 
-.btn-ghost{
-  background:transparent;
-}
+.btn-ghost{ background:transparent; }
 
 .btn-primary{
   background:var(--primary);
@@ -187,8 +185,13 @@ input.search{ flex:1; min-width:240px; }
 }
 
 /* ----- Table ----- */
+/* FIX IMPORTANT : sticky header + container scrollable
+   Si tableWrap a overflow:auto (vertical), le sticky se "référence" au conteneur et part au milieu.
+   => On garde le scroll horizontal seulement.
+*/
 .tableWrap{
-  overflow:auto;
+  overflow-x:auto;
+  overflow-y:visible; /* <- FIX */
   border:1px solid var(--border);
   border-radius:var(--radius);
   margin-top:12px;
