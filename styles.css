@@ -191,7 +191,7 @@ input.search{ flex:1; min-width:240px; }
 */
 .tableWrap{
   overflow-x:auto;
-  overflow-y:visible; /* <- FIX */
+  overflow-y:clip; /* <- FIX */
   border:1px solid var(--border);
   border-radius:var(--radius);
   margin-top:12px;
