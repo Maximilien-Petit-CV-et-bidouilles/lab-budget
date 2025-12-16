@@ -18,7 +18,7 @@
   <header class="topbar">
     <div>
       <h1>Budget laboratoire</h1>
-      <p class="muted">Budgets • Dépenses • Suivi devis → BC → service fait → facture • Projets</p>
+      <p class="muted">Budgets • Dépenses • Suivi devis → BC → service fait → facture • Projets • Porteurs</p>
     </div>
     <div class="topbar-actions">
       <button id="btnLogin" class="btn">Se connecter</button>
@@ -60,7 +60,7 @@
 
     <section class="card">
       <h2>Relances (workflow)</h2>
-      <p class="muted small">Automatique : devis sans BC, BC sans service fait, service fait sans facture (seuils configurés dans app.js).</p>
+      <p class="muted small">Automatique : devis sans BC, BC sans service fait, service fait sans facture (seuils dans app.js).</p>
       <div id="reminders" class="muted">—</div>
     </section>
 
@@ -73,6 +73,10 @@
 
         <label>Libellé
           <input name="label" type="text" required placeholder="Ex : Billets train colloque…" />
+        </label>
+
+        <label>Porteur (optionnel)
+          <input name="owner" type="text" placeholder="Ex : Dupont / Martin / …" />
         </label>
 
         <label>Fournisseur (optionnel)
@@ -151,7 +155,10 @@
       <h2>Liste des dépenses</h2>
 
       <div class="row wrap">
-        <input id="q" class="search" placeholder="Rechercher (libellé / projet / fournisseur / refs)..." />
+        <input id="q" class="search" placeholder="Rechercher (libellé / projet / porteur / fournisseur / refs)..." />
+        <select id="filterOwner">
+          <option value="">Tous porteurs</option>
+        </select>
         <select id="filterStatus">
           <option value="">Tous statuts</option>
           <option value="Votée">Votée</option>
@@ -182,6 +189,7 @@
             <tr>
               <th>Date</th>
               <th>Libellé</th>
+              <th>Porteur</th>
               <th>Fournisseur</th>
               <th>Réfs (devis/BC/fact)</th>
               <th>Type</th>
