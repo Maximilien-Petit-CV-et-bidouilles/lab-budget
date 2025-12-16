@@ -223,4 +223,61 @@ details.details[open] > summary:before{
   table{ min-width: 860px; }
 }
 
+/* =========================
+   Thème clair (safe)
+   ========================= */
+:root{
+  --bg: #f7f7f8;
+  --panel: #ffffff;
+  --text: #111827;
+  --muted: rgba(17,24,39,.68);
+  --border: rgba(17,24,39,.10);
+  --shadow: 0 10px 30px rgba(0,0,0,.06);
+  --shadow-sm: 0 6px 16px rgba(0,0,0,.06);
+  --focus: rgba(17,24,39,.14);
+}
+
+/* Applique les variables à l’UI */
+body{ background: var(--bg); color: var(--text); }
+.muted{ color: var(--muted); }
+
+.card{
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+.tableWrap{
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+
+thead th{
+  background: rgba(255,255,255,.92);
+  border-bottom: 1px solid var(--border);
+}
+
+input, select, textarea{
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+input:focus, select:focus, textarea:focus{
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Boutons */
+.btn{ border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+.btn-primary{ background: #111827; color: white; border-color: #111827; }
+.btn-ghost{ background: transparent; }
+
+/* Details */
+details.details{
+  background: rgba(0,0,0,.02);
+  border: 1px solid var(--border);
+}
+
+
 
