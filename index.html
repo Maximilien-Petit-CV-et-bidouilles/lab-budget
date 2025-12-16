@@ -27,13 +27,20 @@
   </header>
 
   <main class="container">
+    <!-- Visible tant qu'on n'est PAS connecté (via CSS + classe body.is-auth) -->
     <div id="authGate" class="card">
-  <h2>Accès restreint</h2>
-  <p class="muted">Connecte-toi pour afficher les formulaires et accéder aux données.</p>
-  <button id="btnLogin2" class="btn btn-primary">Se connecter</button>
-</div>
+      <h2>Accès restreint</h2>
+      <p class="muted">Connecte-toi pour afficher les formulaires et accéder aux données.</p>
+      <div class="row">
+        <button id="btnLogin2" class="btn btn-primary">Se connecter</button>
+      </div>
+      <p class="muted small" style="margin-top:10px;">
+        Astuce : si tu viens de te connecter et que rien ne s’affiche, rafraîchis la page (F5).
+      </p>
+    </div>
 
-    <section class="cards">
+    <!-- Tout ce qui suit sera masqué hors connexion (classe authOnly) -->
+    <section class="cards authOnly">
       <div class="card">
         <h2>Budgets</h2>
         <div class="grid2">
@@ -64,13 +71,13 @@
       </div>
     </section>
 
-    <section class="card">
+    <section class="card authOnly">
       <h2>Relances (workflow)</h2>
       <p class="muted small">Automatique : devis sans BC, BC sans service fait, service fait sans facture (seuils dans app.js).</p>
       <div id="reminders" class="muted">—</div>
     </section>
 
-    <section class="card">
+    <section class="card authOnly">
       <h2>Ajouter une dépense</h2>
       <form id="expenseForm" class="grid">
         <label>Date (création / saisie)
@@ -157,38 +164,37 @@
       </form>
     </section>
 
-    <section class="card">
+    <section class="card authOnly">
       <h2>Liste des dépenses</h2>
 
-     <div class="row wrap filtersBar">
-  <input id="q" class="search" placeholder="Rechercher (libellé / projet / porteur / fournisseur / refs)..." />
-  <select id="filterOwner">
-    <option value="">Tous porteurs</option>
-  </select>
-  <select id="filterStatus">
-    <option value="">Tous statuts</option>
-    <option value="Votée">Votée</option>
-    <option value="Engagée">Engagée</option>
-    <option value="Service fait">Service fait</option>
-  </select>
-  <select id="filterEnvelope">
-    <option value="">Toutes enveloppes</option>
-    <option value="Fonctionnement">Fonctionnement</option>
-    <option value="Investissement">Investissement</option>
-  </select>
-  <select id="filterType">
-    <option value="">Tous types</option>
-    <option>Orga manifestation scientifique</option>
-    <option>Aide à la publication</option>
-    <option>Mission France</option>
-    <option>Mission Europe</option>
-    <option>Mission International</option>
-    <option>Achat matériel informatique</option>
-    <option>Achat logiciels</option>
-    <option>Autre</option>
-  </select>
-</div>
-
+      <div class="row wrap filtersBar">
+        <input id="q" class="search" placeholder="Rechercher (libellé / projet / porteur / fournisseur / refs)..." />
+        <select id="filterOwner">
+          <option value="">Tous porteurs</option>
+        </select>
+        <select id="filterStatus">
+          <option value="">Tous statuts</option>
+          <option value="Votée">Votée</option>
+          <option value="Engagée">Engagée</option>
+          <option value="Service fait">Service fait</option>
+        </select>
+        <select id="filterEnvelope">
+          <option value="">Toutes enveloppes</option>
+          <option value="Fonctionnement">Fonctionnement</option>
+          <option value="Investissement">Investissement</option>
+        </select>
+        <select id="filterType">
+          <option value="">Tous types</option>
+          <option>Orga manifestation scientifique</option>
+          <option>Aide à la publication</option>
+          <option>Mission France</option>
+          <option>Mission Europe</option>
+          <option>Mission International</option>
+          <option>Achat matériel informatique</option>
+          <option>Achat logiciels</option>
+          <option>Autre</option>
+        </select>
+      </div>
 
       <div class="tableWrap">
         <table>
@@ -217,7 +223,7 @@
       </div>
     </section>
 
-    <section class="cards">
+    <section class="cards authOnly">
       <div class="card">
         <h2>Répartition par statut</h2>
         <canvas id="chartStatus"></canvas>
